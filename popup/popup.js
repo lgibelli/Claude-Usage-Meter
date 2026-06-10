@@ -49,14 +49,22 @@ function fmtUpdated(ts) {
   return `updated ${Math.floor(m / 60)}h ago`;
 }
 
-function titleCase(s) { return s ? s[0].toUpperCase() + s.slice(1) : ""; }
+function titleCase(s) {
+  if (!s) return "";
+  // "fable" -> "Fable", "fable_5" -> "Fable 5"
+  return s.split(/[_\s]+/).map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(" ");
+}
 
 function weeklyLabelFor(weekly, currentModel) {
+  // v1.1.0: label by the family of the bucket actually being displayed —
+  // not the detected model. If the user is on Fable but the API only exposes
+  // a generic weekly bucket, the old order showed "Weekly · Fable" over
+  // generic numbers.
   const family =
-    (currentModel && currentModel.family) ||
     (weekly && weekly.family) ||
+    (currentModel && currentModel.family) ||
     null;
-  if (!family || family === "generic") return "Weekly";
+  if (!family || family === "generic" || family === "other") return "Weekly";
   return `Weekly · ${titleCase(family)}`;
 }
 

@@ -1,4 +1,11 @@
 // background.js  (v1.7)
+// Changes in extension v1.1.0:
+//   - Fable 5 / Mythos 5 (and future model) support: per-model weekly usage
+//     buckets are now extracted dynamically from the usage API field suffix
+//     (seven_day_<family> / weekly_<family>) instead of a hardcoded
+//     opus/sonnet/haiku whitelist; fuzzy bucket matching + generic fallback.
+//   - Model picker detection updated (Fable/Mythos added, "Claude" prefix
+//     optional). Labels render multi-word families ("fable_5" -> "Fable 5").
 // Changes in extension v1.0.9:
 //   - Add: "Rate us" now routes to the correct store. Edge users open the
 //     Microsoft Edge Add-ons listing; everyone else opens the Chrome Web Store
@@ -235,10 +242,15 @@ function pickReset(node) {
 }
 function familyOfField(field) {
   if (!field) return "generic";
-  if (field.endsWith("_opus"))   return "opus";
-  if (field.endsWith("_sonnet")) return "sonnet";
-  if (field.endsWith("_haiku"))  return "haiku";
+  // Bare weekly bucket (no model suffix) → the account-wide generic limit.
   if (field === "seven_day" || field === "weekly") return "generic";
+  // v1.1.0: extract the family dynamically from the field suffix instead of
+  // hardcoding opus/sonnet/haiku. With the Fable 5 / Mythos 5 launch (and
+  // whatever comes next), the usage API can grow new per-model buckets like
+  // `seven_day_fable` — the old whitelist mapped those to "other" and they
+  // were never matched against the active model.
+  const m = field.match(/^(?:seven_day|weekly)_(.+)$/);
+  if (m && m[1]) return m[1].toLowerCase();
   return "other";
 }
 
@@ -271,11 +283,23 @@ async function applyUsage(data) {
 
 function pickWeeklyForActiveFamily(weeklyByFamily, currentModel) {
   if (!weeklyByFamily) return null;
-  const family = (currentModel && currentModel.family) || "generic";
+  const family = ((currentModel && currentModel.family) || "generic").toLowerCase();
   const preferred = weeklyByFamily[family];
-  const generic   = weeklyByFamily.generic;
   if (preferred) return { ...preferred, family };
-  if (generic)   return { ...generic, family: "generic" };
+  // v1.1.0: fuzzy match — the API suffix shape for new models isn't
+  // guaranteed to equal the picker name (e.g. detected "fable" vs a field
+  // like `seven_day_fable_5`). Match any bucket whose key contains the
+  // detected family (or vice-versa) before falling back to generic.
+  if (family !== "generic") {
+    for (const key of Object.keys(weeklyByFamily)) {
+      if (key === "generic" || key === "other") continue;
+      if (key.includes(family) || family.includes(key)) {
+        return { ...weeklyByFamily[key], family: key };
+      }
+    }
+  }
+  const generic = weeklyByFamily.generic;
+  if (generic) return { ...generic, family: "generic" };
   const anyKey = Object.keys(weeklyByFamily)[0];
   return anyKey ? { ...weeklyByFamily[anyKey], family: anyKey } : null;
 }
@@ -382,7 +406,11 @@ async function maybeNotify(usage) {
   }
   await saveLastFired(fired);
 }
-function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : ""; }
+function capitalize(s) {
+  if (!s) return "";
+  // "fable" -> "Fable", "fable_5" -> "Fable 5"
+  return s.split(/[_\s]+/).map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(" ");
+}
 function nextThresholdToFire(currentPercent, thresholds, alreadyFired) {
   const sorted = [...(thresholds || [])].sort((a, b) => a - b);
   let best = null;

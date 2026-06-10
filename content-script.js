@@ -16,7 +16,11 @@
   });
 
   // ===== model detection =====
-  const MODEL_REGEX = /Claude\s+(Opus|Sonnet|Haiku)(?:\s+(\d+(?:\.\d+)?))?/i;
+  // v1.1.0: added Fable and Mythos (new Mythos-class tier, Jan 2026) and made
+  // the "Claude" prefix optional — the model picker button sometimes shows
+  // just "Fable 5" / "Sonnet 4.6" without the brand prefix. The family list
+  // stays a bounded whitelist to avoid false positives on arbitrary buttons.
+  const MODEL_REGEX = /(?:Claude\s+)?(Opus|Sonnet|Haiku|Fable|Mythos)(?:\s+(\d+(?:\.\d+)?))?/i;
   let lastReportedModelFull = null;
 
   function detectModel() {
@@ -181,7 +185,8 @@
     if (!weekly) return "Weekly";
     const f = weekly.family;
     if (!f || f === "generic" || f === "other") return "Weekly";
-    return f[0].toUpperCase() + f.slice(1);
+    // "fable" -> "Fable", "fable_5" -> "Fable 5"
+    return f.split(/[_\s]+/).map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(" ");
   }
 
   function buildOverlay() {

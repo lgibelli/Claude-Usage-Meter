@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Claude Usage Meter",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "description": "Display how much Claude.ai usage you've used and when it resets, above the Claude chat box.",
   "permissions": [
     "storage",
@@ -32,22 +32,39 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://claude.ai/*"],
-      "js": ["content-script.js"],
-      "css": ["overlay.css"],
+      "matches": [
+        "https://claude.ai/*"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "css": [
+        "overlay.css"
+      ],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://claude.ai/*"],
-      "js": ["page-injector.js"],
+      "matches": [
+        "https://claude.ai/*"
+      ],
+      "js": [
+        "page-injector.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["icons/icon16.png", "icons/icon48.png", "icons/icon128.png", "icons/icon-strip.png"],
-      "matches": ["https://claude.ai/*"]
+      "resources": [
+        "icons/icon16.png",
+        "icons/icon48.png",
+        "icons/icon128.png",
+        "icons/icon-strip.png"
+      ],
+      "matches": [
+        "https://claude.ai/*"
+      ]
     }
   ]
 }
