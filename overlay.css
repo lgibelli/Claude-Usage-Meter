@@ -8,6 +8,11 @@
   font-variant-numeric: tabular-nums;
   color: inherit;
   pointer-events: auto;
+  /* v1.1.1: the overlay is a size container so the strip can adapt to the
+     COMPOSER's width (small claude windows, side-by-side panes), not the
+     viewport's. Container queries below progressively compact the strip. */
+  container-type: inline-size;
+  container-name: cut-overlay;
 }
 
 #claude-usage-overlay .cut-strip {
@@ -21,8 +26,17 @@
   letter-spacing: 0.01em;
   user-select: none;
   max-width: 100%;
-  flex-wrap: wrap;
+  min-width: 0;
+  /* v1.1.1: never wrap to a second line — content is shed via the container
+     queries below instead, with horizontal scroll as the final safety net. */
+  flex-wrap: nowrap;
   transition: background 0.15s, border-color 0.15s;
+}
+
+/* Fallback for very old engines without container-query support: keep the
+   pre-1.1.1 wrapping behavior rather than overflowing the page. */
+@supports not (container-type: inline-size) {
+  #claude-usage-overlay .cut-strip { flex-wrap: wrap; }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -275,4 +289,64 @@
 #claude-usage-overlay .cut-close:hover {
   opacity: 1;
   background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
+   v1.1.1 — responsive compaction for narrow composers / small Claude windows.
+   Tiers shed the least-important content first so the strip ALWAYS fits on
+   one line. Widths refer to the composer column (container), not viewport.
+   Full strip needs roughly 620px; tiers below trim it down to ~190px.
+--------------------------------------------------------------------------- */
+
+/* Tier 1 (< 640px): drop the "resets in …" meta text and its "·" separator.
+   Dots + percentages keep all the at-a-glance signal; reset times remain one
+   click away in the popup. */
+@container cut-overlay (max-width: 640px) {
+  #claude-usage-overlay .cut-meta,
+  #claude-usage-overlay .cut-sep {
+    display: none;
+  }
+}
+
+/* Tier 2 (< 480px): tighten spacing and shrink "Rate us" to just the star. */
+@container cut-overlay (max-width: 480px) {
+  #claude-usage-overlay .cut-strip { gap: 7px; }
+  #claude-usage-overlay .cut-rate .cut-rate-txt { display: none; }
+  #claude-usage-overlay .cut-rate { padding: 2px 3px; }
+}
+
+/* Tier 3 (< 400px): drop the rate button and "N left" messages counter
+   entirely (both remain available in the popup). */
+@container cut-overlay (max-width: 400px) {
+  #claude-usage-overlay .cut-rate,
+  #claude-usage-overlay .cut-rate-divider,
+  #claude-usage-overlay .cut-msgs,
+  #claude-usage-overlay .cut-msgs-divider {
+    display: none !important;
+  }
+}
+
+/* Tier 4 (< 330px): ultra-compact. Smaller labels and gaps; if it STILL
+   can't fit, the strip becomes horizontally scrollable (scrollbar hidden)
+   instead of ever wrapping. Hover tooltips are disabled here because the
+   scroll clip would cut them off — and at this width they'd overflow the
+   panel anyway. */
+@container cut-overlay (max-width: 330px) {
+  #claude-usage-overlay .cut-strip {
+    gap: 6px;
+    padding: 5px 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  #claude-usage-overlay .cut-strip::-webkit-scrollbar { display: none; }
+  #claude-usage-overlay .cut-label {
+    font-size: 9px;
+    letter-spacing: 0.05em;
+  }
+  #claude-usage-overlay .cut-pct { font-size: 11px; }
+  #claude-usage-overlay .cut-tooltip,
+  #claude-usage-overlay .cut-close-tooltip {
+    display: none;
+  }
 }
