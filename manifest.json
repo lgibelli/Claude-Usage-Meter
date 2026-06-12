@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Claude Usage Meter",
-  "version": "1.1.1",
-  "description": "Display how much Claude.ai usage you've used and when it resets, above the Claude chat box.",
+  "version": "1.1.2",
+  "description": "Track your Claude.ai usage in real time. See session and weekly limits, reset times, just above claude chatbox.",
   "permissions": [
     "storage",
     "alarms",
