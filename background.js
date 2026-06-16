@@ -1,4 +1,24 @@
-// background.js  (v1.7)
+// background.js  (v1.9)
+// Changes in extension v1.1.6:
+//   - Fix: when the session limit was actually HIT (100% / "Usage limit
+//     reached"), the strip and popup showed 0% instead of 100%. Root cause:
+//     the /api/organizations/{id}/usage poll reports the fresh rolling window
+//     (~0%) at the moment the cap is reached, while the real lockout is
+//     delivered via the completion stream's `message_limit` event (the same
+//     source as Claude's own red "Usage limit reached" bar). We now read the
+//     reached/exhausted signal from that event and pin the session to 100%
+//     until its reset time, so a lagging poll can't reset it to a stale 0%.
+//   - Add: the raw /usage response is stored (`usage_raw`) and logged to the
+//     service worker console to make verifying undocumented field shapes
+//     (e.g. the exact 100%/limit-reached representation) straightforward.
+// Changes in extension v1.1.4:
+//   - Fix: session / weekly usage showed "—" (no data) when a quota was
+//     completely exhausted (100%) or brand-new (0%) if the API returned
+//     `limit: 0` alongside `used`. The `pickPct` helper skipped the
+//     used/limit path when limit=0 (division-by-zero guard), then found no
+//     fallback utilization field, and returned null — causing the strip to
+//     display dashes instead of 100% (or 0%). Fix: intercept the limit=0
+//     case explicitly: used>0 → 100%, used=0 → 0%.
 // Changes in extension v1.1.0:
 //   - Fable 5 / Mythos 5 (and future model) support: per-model weekly usage
 //     buckets are now extracted dynamically from the usage API field suffix
@@ -95,7 +115,9 @@ const STORAGE_KEYS = {
   orgCache: "org_cache",
   lastError: "last_error",
   currentModel: "current_model",
-  lastNotifyError: "last_notify_error"
+  lastNotifyError: "last_notify_error",
+  sessionLock: "session_lock",   // {until} — pins session to 100% while a hard lockout is active
+  usageRaw: "usage_raw"          // last raw /usage response, for diagnosing field shapes
 };
 
 // ---------- storage helpers ----------
@@ -142,6 +164,13 @@ async function setLastNotifyError(msg) {
   await chrome.storage.local.set({
     [STORAGE_KEYS.lastNotifyError]: msg ? { msg, ts: Date.now() } : null
   });
+}
+async function getSessionLock() {
+  const { [STORAGE_KEYS.sessionLock]: l } = await chrome.storage.local.get(STORAGE_KEYS.sessionLock);
+  return l || null;
+}
+async function setSessionLock(lock) {
+  await chrome.storage.local.set({ [STORAGE_KEYS.sessionLock]: lock });
 }
 
 // ---------- org id discovery ----------
@@ -193,6 +222,14 @@ async function pollUsage() {
     }
     if (!resp.ok) throw new Error(`usage_http_${resp.status}`);
     const data = await resp.json();
+    // Diagnostic: keep the raw response so the exact field shape at any usage
+    // level (including 100% / limit-reached) can be inspected from the service
+    // worker console (chrome://extensions → Claude Usage Meter → service worker)
+    // or via chrome.storage.local.get("usage_raw").
+    try {
+      await chrome.storage.local.set({ [STORAGE_KEYS.usageRaw]: { data, ts: Date.now() } });
+    } catch (_) {}
+    console.debug("[ClaudeUsage] raw /usage response:", data);
     await applyUsage(data);
     await setLastError(null);
   } catch (err) {
@@ -208,7 +245,11 @@ function pickPct(node) {
   // Most reliable signal: if both `used` and `limit` are present as numbers,
   // compute the percentage directly. No ambiguity about units.
   if (typeof node.used === "number" && typeof node.limit === "number" &&
-      node.limit > 0 && !isNaN(node.used) && !isNaN(node.limit)) {
+      !isNaN(node.used) && !isNaN(node.limit)) {
+    // When limit=0 the API may indicate the quota is fully exhausted:
+    //   used > 0 and limit = 0  →  treat as 100%
+    //   used = 0 and limit = 0  →  treat as 0% (quota just reset / not started)
+    if (node.limit === 0) return node.used > 0 ? 100 : 0;
     const pct = (node.used / node.limit) * 100;
     return Math.max(0, Math.min(100, Math.round(pct * 10) / 10));
   }
@@ -275,6 +316,20 @@ async function applyUsage(data) {
   usage.weeklyByFamily = weeklyByFamily;
   usage.weekly = pickWeeklyForActiveFamily(weeklyByFamily, await getCurrentModel());
 
+  // Honour an active session lockout. When the limit is hit, the /usage poll
+  // can still report the fresh rolling window at ~0% even though messages are
+  // blocked — so a lockout recorded from the message_limit SSE event pins the
+  // session to 100% until its reset time passes.
+  const lock = await getSessionLock();
+  if (lock && lock.until && lock.until > Date.now()) {
+    const cur = usage.session;
+    if (!cur || cur.percent == null || cur.percent < 100) {
+      usage.session = { percent: 100, resetsAt: lock.until };
+    }
+  } else if (lock) {
+    await setSessionLock(null);
+  }
+
   usage.updatedAt = Date.now();
   await saveUsage(usage);
   await maybeNotify(usage);
@@ -320,11 +375,27 @@ async function applyMessageLimit(payload) {
     usage.messagesRemaining = payload.remaining;
     usage.messagesRemainingAt = Date.now();
   }
+  let resetTs = null;
   if (payload.resetsAt) {
     const t = Date.parse(payload.resetsAt);
-    if (!isNaN(t)) usage.messagesResetAt = t;
+    if (!isNaN(t)) { usage.messagesResetAt = t; resetTs = t; }
   }
+
+  // Hard lockout handling. The /usage poll lags (or reads the fresh window at
+  // ~0%) at the moment the cap is hit; the authoritative "limit reached"
+  // signal arrives here via the completion stream's message_limit event — the
+  // same source Claude's own "Usage limit reached" bar uses. Pin the session
+  // to 100% and hold it until the reset time so the strip doesn't fall back to
+  // a stale 0% on the next poll.
+  const reached = payload.reached === true || payload.remaining === 0;
+  if (reached) {
+    const until = resetTs || (usage.session && usage.session.resetsAt) || (Date.now() + 5 * 60 * 60 * 1000);
+    await setSessionLock({ until });
+    usage.session = { percent: 100, resetsAt: resetTs || (usage.session && usage.session.resetsAt) || until };
+  }
+
   await saveUsage(usage);
+  await maybeNotify(usage);
   await broadcastUsage(usage);
 }
 
@@ -559,6 +630,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         [STORAGE_KEYS.orgCache]: null,
         [STORAGE_KEYS.lastError]: null,
         [STORAGE_KEYS.lastNotifyError]: null,
+        [STORAGE_KEYS.sessionLock]: null,
+        [STORAGE_KEYS.usageRaw]: null,
         overlay_dismissed_until: 0
       });
       try { await chrome.action.setBadgeText({ text: "" }); } catch (_) {}

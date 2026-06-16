@@ -1,4 +1,7 @@
-// content-script.js (isolated world, v1.6)
+// content-script.js (isolated world, v1.7)
+// - v1.1.5: the % number is now colored to match its status dot, and any
+//   segment at >= 90% gets a red "alert" wash. At 100% the segment turns a
+//   stronger red and pulses (respects prefers-reduced-motion).
 // - Adds a second segment to the overlay strip for weekly usage.
 // - v1.0.8: removed the auto-scroll feature. It was hijacking the page's
 //   scroll position while the overlay was mounted; closing the overlay
@@ -278,13 +281,23 @@
     const metaEl  = segEl.querySelector('[data-cut-meta]');
     if (labelOverride) labelEl.textContent = labelOverride;
     if (data && data.percent != null) {
-      pctEl.textContent = `${data.percent}%`;
+      const p = data.percent;
+      pctEl.textContent = `${p}%`;
       metaEl.textContent = data.resetsAt ? `resets in ${fmtReset(data.resetsAt)}` : "no reset info";
-      dotEl.className = "cut-dot cut-color-" + colorClass(data.percent);
+      const cls = colorClass(p);
+      dotEl.className = "cut-dot cut-color-" + cls;
+      // Also tint the % number itself, and flag alert states:
+      //   >= 90%  → red text ("cut-alert")
+      //   = 100%  → red text + pulsing "maxed out" emphasis ("cut-alert-max")
+      pctEl.className = "cut-pct cut-color-" + cls;
+      segEl.classList.toggle("cut-alert", p >= 90);
+      segEl.classList.toggle("cut-alert-max", p >= 100);
     } else {
       pctEl.textContent = "—";
+      pctEl.className = "cut-pct";
       metaEl.textContent = "waiting…";
       dotEl.className = "cut-dot cut-color-neutral";
+      segEl.classList.remove("cut-alert", "cut-alert-max");
     }
   }
 

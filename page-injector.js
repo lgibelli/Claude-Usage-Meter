@@ -68,6 +68,33 @@
     return false;
   }
 
+  // Detect whether a message_limit payload signals the limit is actually
+  // *reached* (hard lockout), as opposed to just reporting a remaining count.
+  // Claude's lockout bar ("Usage limit reached") is driven by this event, not
+  // by the /usage poll — which can still read ~0% for the fresh window at the
+  // moment the cap is hit. Field names vary, so scan loosely for a status/type
+  // string like "reached"/"exceeded"/"exhausted" or a truthy *_reached flag.
+  const REACHED_HINTS = ["reached", "exceeded", "exhausted", "limit_hit", "out_of_messages"];
+  function detectReached(obj, depth = 0) {
+    if (!obj || typeof obj !== "object" || depth > 6) return false;
+    for (const k of Object.keys(obj)) {
+      const v = obj[k];
+      const lk = k.toLowerCase();
+      if (typeof v === "string") {
+        const lv = v.toLowerCase();
+        if ((lk.includes("type") || lk.includes("status") || lk.includes("event") || lk.includes("reason")) &&
+            REACHED_HINTS.some((h) => lv.includes(h))) return true;
+      }
+      if (v === true && (lk.includes("reached") || lk.includes("exceeded") || lk.includes("exhausted"))) {
+        return true;
+      }
+      if (v && typeof v === "object") {
+        if (detectReached(v, depth + 1)) return true;
+      }
+    }
+    return false;
+  }
+
   function inspectJsonChunk(jsonStr) {
     try {
       const obj = JSON.parse(jsonStr);
@@ -77,11 +104,13 @@
       if (looksLikeMessageLimit(obj) || findRemaining(obj) != null) {
         const remaining = findRemaining(obj);
         const resetsAt = findResetAt(obj);
-        if (remaining != null || resetsAt) {
+        const reached = detectReached(obj) || remaining === 0;
+        if (remaining != null || resetsAt || reached) {
           postToContent({
             kind: "message_limit",
             remaining,
             resetsAt: resetsAt || null,
+            reached,
             ts: Date.now()
           });
         }

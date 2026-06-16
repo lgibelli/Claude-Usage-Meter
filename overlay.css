@@ -171,6 +171,49 @@
   font-size: 12px;
 }
 
+/* Color the % number to match its dot (text inherits by default; these only
+   apply once a usage value is known). Red kicks in at >= 90%. */
+#claude-usage-overlay .cut-pct.cut-color-green   { color: #10b981; }
+#claude-usage-overlay .cut-pct.cut-color-amber   { color: #f59e0b; }
+#claude-usage-overlay .cut-pct.cut-color-orange  { color: #f97316; }
+#claude-usage-overlay .cut-pct.cut-color-red     { color: #ef4444; font-weight: 700; }
+
+/* Red-alert state: any segment at >= 90% gets a subtle red wash so it's
+   unmissable even at a glance. */
+#claude-usage-overlay .cut-seg.cut-alert {
+  border-radius: 6px;
+  padding: 1px 5px;
+  margin: -1px -2px;
+  background: rgba(239, 68, 68, 0.10);
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.25);
+}
+
+/* Maxed out (100%): stronger red + a slow pulse to grab attention. */
+#claude-usage-overlay .cut-seg.cut-alert-max {
+  background: rgba(239, 68, 68, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.45);
+  animation: cut-alert-pulse 1.4s ease-in-out infinite;
+}
+#claude-usage-overlay .cut-seg.cut-alert-max .cut-pct { color: #ef4444; }
+#claude-usage-overlay .cut-seg.cut-alert-max .cut-dot {
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.30);
+}
+
+@keyframes cut-alert-pulse {
+  0%, 100% {
+    background: rgba(239, 68, 68, 0.16);
+    box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.45);
+  }
+  50% {
+    background: rgba(239, 68, 68, 0.30);
+    box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.75);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #claude-usage-overlay .cut-seg.cut-alert-max { animation: none; }
+}
+
 #claude-usage-overlay .cut-sep { opacity: 0.35; font-weight: 400; }
 
 #claude-usage-overlay .cut-meta { opacity: 0.85; font-size: 11px; }
