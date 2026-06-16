@@ -1,4 +1,30 @@
-// background.js  (v1.9)
+// background.js  (v1.11)
+// Changes in extension v1.1.4:
+//   - Fix: usage never showed for accounts that belong to an organization
+//     (e.g. a company-managed org alongside a personal org). getOrgId picked
+//     the first org from /api/organizations with a "chat" capability, which
+//     for multi-org accounts is often NOT the org the user is actually using,
+//     so /usage was queried for the wrong org and returned nothing. We now
+//     read the active org from claude.ai's `lastActiveOrg` cookie (the same
+//     source the page itself uses) via chrome.cookies, falling back to the
+//     organizations-list heuristic only when the cookie is unavailable. Also
+//     reflects org switches immediately. Requires the new "cookies" permission.
+//   - (rolled in from interim builds) message_limit lockout pins session to
+//     100%; X-Organization-UUID header sent on /usage; error-shaped response
+//     bodies surfaced; raw /usage stored for diagnostics; limit=0 handled as
+//     100%/0%; % text colored red with a pulse at >=90% / 100%.
+// background.js  (v1.10)
+// Changes in extension v1.1.7:
+//   - Fix: claude.ai's usage endpoint now requires an `X-Organization-UUID`
+//     header for session-cookie auth — without it the request fails with
+//     {"type":"error","error":{"type":"authentication_error",
+//     "message":"X-Organization-UUID header is required for session key
+//     authentication"}} and no usage data is returned. We now send the org
+//     UUID (already discovered via getOrgId) on both the primary and the
+//     404-retry usage fetch.
+//   - Add: error-shaped response bodies ({"type":"error",...}) are now
+//     detected and surfaced via lastError instead of being parsed as empty
+//     usage (which left the strip blank/stale with no explanation).
 // Changes in extension v1.1.6:
 //   - Fix: when the session limit was actually HIT (100% / "Usage limit
 //     reached"), the strip and popup showed 0% instead of 100%. Root cause:
@@ -175,7 +201,35 @@ async function setSessionLock(lock) {
 
 // ---------- org id discovery ----------
 
+// The org the user currently has active in claude.ai. For accounts that belong
+// to a single org this is the only org; for accounts in multiple orgs (e.g. a
+// personal org plus a company-managed org) claude.ai records the active one in
+// the `lastActiveOrg` cookie and uses it for its own /api/organizations/{id}/...
+// calls. Reading it directly is authoritative and instant, and — unlike
+// document.cookie — chrome.cookies can read it even if it is HttpOnly.
+async function getActiveOrgFromCookie() {
+  if (!chrome.cookies || !chrome.cookies.get) return null;
+  try {
+    const cookie = await chrome.cookies.get({
+      name: "lastActiveOrg",
+      url: "https://claude.ai/"
+    });
+    return cookie && cookie.value ? cookie.value : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function getOrgId(forceRefresh = false) {
+  // Prefer the live active-org cookie. It is read fresh every time (cheap,
+  // local) so switching between a personal and a managed org is reflected
+  // immediately, and it matches the org the page itself is calling.
+  const activeOrg = await getActiveOrgFromCookie();
+  if (activeOrg) return activeOrg;
+
+  // Fallback (cookie unavailable): derive from the organizations list. This
+  // is the legacy heuristic and is unreliable for multi-org/managed accounts,
+  // so it is only used when the cookie can't be read.
   if (!forceRefresh) {
     const { [STORAGE_KEYS.orgCache]: cached } =
       await chrome.storage.local.get(STORAGE_KEYS.orgCache);
@@ -207,7 +261,7 @@ async function pollUsage() {
     const orgId = await getOrgId();
     let resp = await fetch(`https://claude.ai/api/organizations/${orgId}/usage`, {
       credentials: "include",
-      headers: { accept: "application/json" }
+      headers: { accept: "application/json", "X-Organization-UUID": orgId }
     });
     if (resp.status === 401 || resp.status === 403) {
       await setLastError("Not signed in to claude.ai");
@@ -217,11 +271,21 @@ async function pollUsage() {
       const fresh = await getOrgId(true);
       resp = await fetch(`https://claude.ai/api/organizations/${fresh}/usage`, {
         credentials: "include",
-        headers: { accept: "application/json" }
+        headers: { accept: "application/json", "X-Organization-UUID": fresh }
       });
     }
     if (!resp.ok) throw new Error(`usage_http_${resp.status}`);
     const data = await resp.json();
+    // Some auth/validation failures come back with a 200-ish status but an
+    // error-shaped body (e.g. {"type":"error","error":{...}}). Surface those
+    // instead of parsing them as empty usage (which silently leaves the strip
+    // blank or showing a stale value).
+    if (data && data.type === "error") {
+      const m = (data.error && data.error.message) || "usage_api_error";
+      await setLastError(m);
+      console.warn("[ClaudeUsage] /usage returned an error body:", data);
+      return;
+    }
     // Diagnostic: keep the raw response so the exact field shape at any usage
     // level (including 100% / limit-reached) can be inspected from the service
     // worker console (chrome://extensions → Claude Usage Meter → service worker)

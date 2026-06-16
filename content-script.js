@@ -184,12 +184,11 @@
     if (p >= 50) return "amber";
     return "green";
   }
-  function weeklyLabel(weekly) {
-    if (!weekly) return "Weekly";
-    const f = weekly.family;
-    if (!f || f === "generic" || f === "other") return "Weekly";
-    // "fable" -> "Fable", "fable_5" -> "Fable 5"
-    return f.split(/[_\s]+/).map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(" ");
+  function weeklyLabel(_weekly) {
+    // Always show "Weekly" regardless of which model family is active. (The
+    // family-specific weekly bucket is still selected for the percentage in
+    // background.js; only the displayed label is fixed here.)
+    return "Weekly";
   }
 
   function buildOverlay() {

@@ -55,17 +55,11 @@ function titleCase(s) {
   return s.split(/[_\s]+/).map(w => w ? w[0].toUpperCase() + w.slice(1) : w).join(" ");
 }
 
-function weeklyLabelFor(weekly, currentModel) {
-  // v1.1.0: label by the family of the bucket actually being displayed —
-  // not the detected model. If the user is on Fable but the API only exposes
-  // a generic weekly bucket, the old order showed "Weekly · Fable" over
-  // generic numbers.
-  const family =
-    (weekly && weekly.family) ||
-    (currentModel && currentModel.family) ||
-    null;
-  if (!family || family === "generic" || family === "other") return "Weekly";
-  return `Weekly · ${titleCase(family)}`;
+function weeklyLabelFor(_weekly, _currentModel) {
+  // Always show plain "Weekly" regardless of the active model family. The
+  // correct family-specific weekly bucket is still chosen for the percentage
+  // in background.js; only the label text is fixed here.
+  return "Weekly";
 }
 
 function renderCard(scope, data) {
