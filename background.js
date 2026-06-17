@@ -1,4 +1,17 @@
-// background.js  (v1.11)
+// background.js  (v1.12)
+// Changes in extension v1.1.5:
+//   - Fix: usage strip went blank (showing "—") while recording with screen
+//     capture tools like Screen Studio. Root cause: macOS screen capture APIs
+//     cause Chrome to treat the captured window as "hidden", which triggers
+//     Chrome's service-worker throttling — chrome.alarms stops firing on
+//     schedule, the poll never runs, and no data reaches the strip. Two fixes:
+//     (1) content-script.js now listens for `visibilitychange` and fires a
+//     `force-refresh` message the moment the tab becomes visible again, so
+//     data is always current when the recording resumes or stops.
+//     (2) content-script.js sends a `keepalive` ping every 20 s to prevent
+//     the background service worker from being suspended mid-recording.
+//     background.js handles `keepalive` as a lightweight no-op so the service
+//     worker stays alive and alarms keep firing.
 // Changes in extension v1.1.4:
 //   - Fix: usage never showed for accounts that belong to an organization
 //     (e.g. a company-managed org alongside a personal org). getOrgId picked
@@ -680,6 +693,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       } catch (_) {}
       sendResponse && sendResponse({ ok: true });
     })();
+    return true;
+  }
+
+  if (msg.type === "keepalive") {
+    // No-op: receiving this message keeps the service worker alive so
+    // chrome.alarms continues to fire normally during screen recording
+    // (when Chrome would otherwise suspend the worker due to inactivity).
+    sendResponse && sendResponse({ ok: true });
     return true;
   }
 

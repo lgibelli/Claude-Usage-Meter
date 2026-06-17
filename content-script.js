@@ -1,5 +1,13 @@
-// content-script.js (isolated world, v1.7)
-// - v1.1.5: the % number is now colored to match its status dot, and any
+// content-script.js (isolated world, v1.8)
+// - v1.1.5: fix blank strip during screen recording (e.g. Screen Studio).
+//   Chrome throttles / suspends the background service worker when macOS
+//   screen-capture APIs mark the window as "hidden". Two mitigations:
+//   (1) visibilitychange listener — fires a force-refresh whenever the tab
+//       becomes visible again so data is always fresh after a recording pause.
+//   (2) keepalive ping — sends a no-op message to the background every 20 s
+//       to prevent service-worker suspension mid-recording so alarms keep
+//       firing throughout the session.
+// - v1.1.4: the % number is now colored to match its status dot, and any
 //   segment at >= 90% gets a red "alert" wash. At 100% the segment turns a
 //   stronger red and pulses (respects prefers-reduced-motion).
 // - Adds a second segment to the overlay strip for weekly usage.
@@ -452,4 +460,28 @@
     const root = document.getElementById(OVERLAY_ID);
     if (root) renderInto(root);
   }, 30 * 1000);
+
+  // ===== screen-recording / tab-visibility fix (v1.1.5) =====
+  // Screen capture tools (e.g. Screen Studio on macOS) cause Chrome to mark
+  // the window as "hidden" via the Page Visibility API. Chrome then throttles
+  // or suspends the background service worker, stopping chrome.alarms — so
+  // pollUsage() never runs and the strip shows stale "—" data for the entire
+  // recording session.
+  //
+  // Fix 1 — visibilitychange: when the tab becomes visible again (recording
+  // paused, window brought back to focus, or recording stopped) we immediately
+  // request a fresh poll so the strip is up to date at once.
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      try { chrome.runtime.sendMessage({ type: "force-refresh" }); } catch (_) {}
+    }
+  });
+
+  // Fix 2 — keepalive ping: send a no-op message to the background service
+  // worker every 20 s. The act of receiving a message prevents Chrome from
+  // killing an idle service worker, so chrome.alarms keeps firing at its
+  // normal 1-minute interval throughout a screen-recording session.
+  setInterval(() => {
+    try { chrome.runtime.sendMessage({ type: "keepalive" }); } catch (_) {}
+  }, 20000);
 })();
