@@ -379,3 +379,35 @@ footer { display: flex; gap: 8px; margin-top: 14px; }
 .btn-rate .btn-rate-star { font-size: 13px; line-height: 1; }
 
 .btn-rate.hidden { display: none; }
+
+/* ── Support/Donate button ── */
+.btn-donate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  margin: 8px 0 0;
+  padding: 9px 12px;
+  border: 1px solid rgba(217, 119, 87, 0.40);
+  border-radius: 7px;
+  background: rgba(217, 119, 87, 0.10);
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.btn-donate:hover {
+  background: rgba(217, 119, 87, 0.18);
+  border-color: rgba(217, 119, 87, 0.60);
+  transform: translateY(-1px);
+}
+
+.btn-donate:active { transform: translateY(0); }
+
+.btn-donate .btn-donate-icon { font-size: 13px; line-height: 1; }

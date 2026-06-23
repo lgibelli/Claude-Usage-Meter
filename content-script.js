@@ -149,6 +149,9 @@
   const OVERLAY_ID = "claude-usage-overlay";
   const DISMISS_KEY = "overlay_dismissed_until";
   const RATE_KEY = "rate_us_clicked";
+  const DONATE_KEY = "donate_clicked_at";
+  const DONATE_LINK = "https://buymeacoffee.com/selectorshub";
+  const DONATE_COOLDOWN = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
   const CHROME_REVIEW_URL = "https://chromewebstore.google.com/detail/claude-usage-meter/kgpahkcgadpnklinijdojapiadnfelae/reviews";
   const EDGE_REVIEW_URL = "https://microsoftedge.microsoft.com/addons/detail/claude-usage-meter/anhdhmpfpgbohohjlbgnggnmcmkmmcbn";
   // Used only by the fallback below; the background normally opens the tab.
@@ -163,6 +166,7 @@
     return CHROME_REVIEW_URL;
   }
   let rated = false;
+  let donateVisible = true;
   let latestUsage = null;
   let latestMsgsRemaining = null;
 
@@ -236,6 +240,11 @@
                 aria-label="Rate Claude Usage Meter on the Chrome Web Store" title="Rate us on the Chrome Web Store">
           <span class="cut-rate-star">⭐️</span><span class="cut-rate-txt">Rate us</span>
         </button>
+        <div class="cut-divider cut-donate-divider" data-cut="donate-divider"></div>
+        <a href="${DONATE_LINK}" target="_blank" rel="noopener noreferrer" class="cut-donate" data-cut="donate"
+           aria-label="Support SelectorsHub on Buy Me a Coffee" title="Support us on Buy Me a Coffee">
+          <span class="cut-donate-icon">☕</span><span class="cut-donate-txt">Support</span>
+        </a>
         <span class="cut-close-wrap">
           <button class="cut-close" type="button" aria-label="Hide the strip for 12 hours">×</button>
           <span class="cut-close-tooltip" aria-hidden="true">Hides the strip for 12 hours.<br><strong>To bring it back sooner:</strong> click the Claude Usage Meter icon in your browser toolbar, then click <strong>"Show Usage Strip above Chat"</strong>.</span>
@@ -266,7 +275,17 @@
         }
       });
     }
+    const donateLink = root.querySelector(".cut-donate");
+    if (donateLink) {
+      donateLink.addEventListener("click", (e) => {
+        // Don't prevent default — let the link open normally
+        // But save the timestamp for the 30-day cooldown
+        try { chrome.storage.local.set({ [DONATE_KEY]: Date.now() }); } catch (_) {}
+        applyDonateVisibility(root);
+      });
+    }
     applyRateVisibility(root);
+    applyDonateVisibility(root);
     root.addEventListener("click", e => e.stopPropagation());
     return root;
   }
@@ -278,6 +297,27 @@
     const display = rated ? "none" : "";
     if (rb) rb.style.display = display;
     if (rd) rd.style.display = display;
+  }
+
+  async function applyDonateVisibility(root) {
+    if (!root) return;
+    const db = root.querySelector('[data-cut="donate"]');
+    const dd = root.querySelector('[data-cut="donate-divider"]');
+    if (!db || !dd) return;
+    
+    // Check if donate was clicked recently (within 30 days)
+    let shouldHide = false;
+    try {
+      const { [DONATE_KEY]: clickedAt } = await chrome.storage.local.get(DONATE_KEY);
+      if (clickedAt && Date.now() - clickedAt < DONATE_COOLDOWN) {
+        shouldHide = true;
+      }
+    } catch (_) {}
+    
+    const display = shouldHide ? "none" : "";
+    db.style.display = display;
+    dd.style.display = display;
+    donateVisible = !shouldHide;
   }
 
   function renderSegment(segEl, data, labelOverride) {
@@ -313,6 +353,7 @@
     renderSegment(root.querySelector('[data-cut="session"]'), latestUsage && latestUsage.session, "Session");
     renderSegment(root.querySelector('[data-cut="weekly"]'),  latestUsage && latestUsage.weekly,  weeklyLabel(latestUsage && latestUsage.weekly));
     applyRateVisibility(root);
+    applyDonateVisibility(root);
 
     const msgsEl  = root.querySelector('[data-cut="msgs"]');
     const msgsDiv = root.querySelector('[data-cut="msgs-divider"]');
@@ -453,6 +494,10 @@
     if (changes[RATE_KEY]) {
       rated = !!changes[RATE_KEY].newValue;
       applyRateVisibility(document.getElementById(OVERLAY_ID));
+    }
+    if (changes[DONATE_KEY]) {
+      const root = document.getElementById(OVERLAY_ID);
+      if (root) applyDonateVisibility(root);
     }
   });
 

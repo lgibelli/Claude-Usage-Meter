@@ -266,6 +266,42 @@
   letter-spacing: 0.01em;
 }
 
+#claude-usage-overlay .cut-donate {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0.85;
+  white-space: nowrap;
+  transition: opacity 0.15s, background 0.15s, transform 0.15s;
+  text-decoration: none;
+}
+
+#claude-usage-overlay .cut-donate:hover {
+  opacity: 1;
+  transform: translateY(-0.5px);
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+#claude-usage-overlay .cut-donate .cut-donate-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+#claude-usage-overlay .cut-donate .cut-donate-txt {
+  letter-spacing: 0.01em;
+}
+
 #claude-usage-overlay .cut-close-tooltip {
   position: absolute;
   bottom: calc(100% + 10px);
@@ -351,18 +387,22 @@
   }
 }
 
-/* Tier 2 (< 480px): tighten spacing and shrink "Rate us" to just the star. */
+/* Tier 2 (< 480px): tighten spacing and shrink "Rate us" and "Support" to just icons. */
 @container cut-overlay (max-width: 480px) {
   #claude-usage-overlay .cut-strip { gap: 7px; }
   #claude-usage-overlay .cut-rate .cut-rate-txt { display: none; }
   #claude-usage-overlay .cut-rate { padding: 2px 3px; }
+  #claude-usage-overlay .cut-donate .cut-donate-txt { display: none; }
+  #claude-usage-overlay .cut-donate { padding: 2px 3px; }
 }
 
-/* Tier 3 (< 400px): drop the rate button and "N left" messages counter
+/* Tier 3 (< 400px): drop the rate and donate buttons and "N left" messages counter
    entirely (both remain available in the popup). */
 @container cut-overlay (max-width: 400px) {
   #claude-usage-overlay .cut-rate,
   #claude-usage-overlay .cut-rate-divider,
+  #claude-usage-overlay .cut-donate,
+  #claude-usage-overlay .cut-donate-divider,
   #claude-usage-overlay .cut-msgs,
   #claude-usage-overlay .cut-msgs-divider {
     display: none !important;

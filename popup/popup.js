@@ -3,6 +3,7 @@
 const CHROME_REVIEW_URL = "https://chromewebstore.google.com/detail/claude-usage-meter/kgpahkcgadpnklinijdojapiadnfelae/reviews";
 const EDGE_REVIEW_URL = "https://microsoftedge.microsoft.com/addons/detail/claude-usage-meter/anhdhmpfpgbohohjlbgnggnmcmkmmcbn";
 const RATE_KEY = "rate_us_clicked";
+const DONATE_KEY = "donate_clicked_at";
 
 // Edge is Chromium under the hood, so sniff the UA to route the review link.
 function isEdgeBrowser() {
@@ -308,6 +309,14 @@ document.getElementById("rate-btn").addEventListener("click", async () => {
     await chrome.tabs.create({ url: getReviewUrl() });
   } catch (_) {}
   window.close();
+});
+
+document.getElementById("donate-btn").addEventListener("click", async (e) => {
+  // Save the donation timestamp for the 30-day cooldown in the strip
+  try {
+    await chrome.storage.local.set({ [DONATE_KEY]: Date.now() });
+  } catch (_) {}
+  // Let the link open normally (target="_blank" will handle it)
 });
 
 (async () => {
