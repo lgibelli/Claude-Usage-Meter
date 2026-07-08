@@ -236,15 +236,21 @@
         <div class="cut-divider cut-msgs-divider" data-cut="msgs-divider" hidden></div>
         <span class="cut-msgs" data-cut="msgs" hidden></span>
         <div class="cut-divider cut-rate-divider" data-cut="rate-divider"></div>
-        <button class="cut-rate" type="button" data-cut="rate"
-                aria-label="Rate Claude Usage Meter on the Chrome Web Store" title="Rate us on the Chrome Web Store">
-          <span class="cut-rate-star">⭐️</span><span class="cut-rate-txt">Rate us</span>
-        </button>
+        <span class="cut-rate-wrap" data-cut="rate-wrap">
+          <button class="cut-rate" type="button" data-cut="rate"
+                  aria-label="Rate Claude Usage Meter on the Chrome Web Store">
+            <span class="cut-rate-star">⭐️</span><span class="cut-rate-txt">Rate us</span>
+          </button>
+          <span class="cut-rate-tooltip" aria-hidden="true">Pls Rate us & this button disappears forever after you review.</span>
+        </span>
         <div class="cut-divider cut-donate-divider" data-cut="donate-divider"></div>
-        <a href="${DONATE_LINK}" target="_blank" rel="noopener noreferrer" class="cut-donate" data-cut="donate"
-           aria-label="Support SelectorsHub on Buy Me a Coffee" title="Support us on Buy Me a Coffee">
-          <span class="cut-donate-icon">☕</span><span class="cut-donate-txt">Support</span>
-        </a>
+        <span class="cut-donate-wrap" data-cut="donate-wrap">
+          <a href="${DONATE_LINK}" target="_blank" rel="noopener noreferrer" class="cut-donate" data-cut="donate"
+             aria-label="Support SelectorsHub on Buy Me a Coffee">
+            <span class="cut-donate-icon">☕</span><span class="cut-donate-txt">Support</span>
+          </a>
+          <span class="cut-donate-tooltip" aria-hidden="true">Support us - this button hides for 30 days after you click.</span>
+        </span>
         <span class="cut-close-wrap">
           <button class="cut-close" type="button" aria-label="Hide the strip for 12 hours">×</button>
           <span class="cut-close-tooltip" aria-hidden="true">Hides the strip for 12 hours.<br><strong>To bring it back sooner:</strong> click the Claude Usage Meter icon in your browser toolbar, then click <strong>"Show Usage Strip above Chat"</strong>.</span>
@@ -292,7 +298,7 @@
 
   function applyRateVisibility(root) {
     if (!root) return;
-    const rb = root.querySelector('[data-cut="rate"]');
+    const rb = root.querySelector('[data-cut="rate-wrap"]') || root.querySelector('[data-cut="rate"]');
     const rd = root.querySelector('[data-cut="rate-divider"]');
     const display = rated ? "none" : "";
     if (rb) rb.style.display = display;
@@ -301,7 +307,7 @@
 
   async function applyDonateVisibility(root) {
     if (!root) return;
-    const db = root.querySelector('[data-cut="donate"]');
+    const db = root.querySelector('[data-cut="donate-wrap"]') || root.querySelector('[data-cut="donate"]');
     const dd = root.querySelector('[data-cut="donate-divider"]');
     if (!db || !dd) return;
     
