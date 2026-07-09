@@ -247,7 +247,7 @@
         <span class="cut-donate-wrap" data-cut="donate-wrap">
           <a href="${DONATE_LINK}" target="_blank" rel="noopener noreferrer" class="cut-donate" data-cut="donate"
              aria-label="Support SelectorsHub on Buy Me a Coffee">
-            <span class="cut-donate-icon">☕</span><span class="cut-donate-txt">Support</span>
+            <span class="cut-donate-icon">❤️</span><span class="cut-donate-txt">Support</span>
           </a>
           <span class="cut-donate-tooltip" aria-hidden="true">Support us - this button hides for 30 days after you click.</span>
         </span>
@@ -269,6 +269,8 @@
         e.preventDefault(); e.stopPropagation();
         rated = true;
         applyRateVisibility(root);
+        // Rate us is gone now — the Support button takes its place.
+        applyDonateVisibility(root);
         // Persist the flag directly so the button never returns, even if the
         // background message below fails and we take the fallback path.
         try { chrome.storage.local.set({ [RATE_KEY]: true }); } catch (_) {}
@@ -310,16 +312,21 @@
     const db = root.querySelector('[data-cut="donate-wrap"]') || root.querySelector('[data-cut="donate"]');
     const dd = root.querySelector('[data-cut="donate-divider"]');
     if (!db || !dd) return;
-    
-    // Check if donate was clicked recently (within 30 days)
-    let shouldHide = false;
-    try {
-      const { [DONATE_KEY]: clickedAt } = await chrome.storage.local.get(DONATE_KEY);
-      if (clickedAt && Date.now() - clickedAt < DONATE_COOLDOWN) {
-        shouldHide = true;
-      }
-    } catch (_) {}
-    
+
+    // Support only appears once the Rate us button is gone (user has rated).
+    // Never show both at the same time — keeps the strip compact.
+    let shouldHide = !rated;
+
+    // Also respect the 30-day cooldown after a donate click.
+    if (!shouldHide) {
+      try {
+        const { [DONATE_KEY]: clickedAt } = await chrome.storage.local.get(DONATE_KEY);
+        if (clickedAt && Date.now() - clickedAt < DONATE_COOLDOWN) {
+          shouldHide = true;
+        }
+      } catch (_) {}
+    }
+
     const display = shouldHide ? "none" : "";
     db.style.display = display;
     dd.style.display = display;
@@ -499,7 +506,10 @@
     if (area !== "local") return;
     if (changes[RATE_KEY]) {
       rated = !!changes[RATE_KEY].newValue;
-      applyRateVisibility(document.getElementById(OVERLAY_ID));
+      const root = document.getElementById(OVERLAY_ID);
+      applyRateVisibility(root);
+      // Donate visibility depends on the rated flag too.
+      if (root) applyDonateVisibility(root);
     }
     if (changes[DONATE_KEY]) {
       const root = document.getElementById(OVERLAY_ID);

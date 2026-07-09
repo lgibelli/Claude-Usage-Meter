@@ -331,10 +331,10 @@
   border: none;
   color: inherit;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 2px 3px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   border-radius: 999px;
   font: inherit;
   font-weight: 600;
@@ -352,7 +352,7 @@
 }
 
 #claude-usage-overlay .cut-rate .cut-rate-star {
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
 }
 
@@ -366,10 +366,10 @@
   border: none;
   color: inherit;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 2px 3px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   border-radius: 999px;
   font: inherit;
   font-weight: 600;
@@ -388,7 +388,7 @@
 }
 
 #claude-usage-overlay .cut-donate .cut-donate-icon {
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
 }
 
