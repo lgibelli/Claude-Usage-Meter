@@ -739,10 +739,14 @@
    collapse/close controls. !important is needed to beat inline display
    styles set by the JS visibility functions. */
 #claude-usage-overlay.cut-collapsed .cut-seg,
-#claude-usage-overlay.cut-collapsed .cut-divider,
+#claude-usage-overlay.cut-collapsed .cut-divider:not(.cut-rate-divider):not(.cut-share-divider),
 #claude-usage-overlay.cut-collapsed .cut-msgs {
   display: none !important;
 }
+
+/* The rate/share dividers stay in collapsed mode: they follow their button's
+   inline visibility, giving a | separator between the W value and the star
+   or share icon whenever one of those buttons is present. */
 
 /* Rate us / Share stay in collapsed mode (their own rated/shared visibility
    rules still apply via inline styles) — but Rate us shrinks to just its star. */
