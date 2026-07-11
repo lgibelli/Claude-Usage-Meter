@@ -68,6 +68,7 @@
 @media (prefers-color-scheme: dark) {
   #claude-usage-overlay:not(.cut-theme-light) .cut-rate-tooltip,
   #claude-usage-overlay:not(.cut-theme-light) .cut-donate-tooltip,
+  #claude-usage-overlay:not(.cut-theme-light) .cut-share-tooltip,
   #claude-usage-overlay:not(.cut-theme-light) .cut-close-tooltip {
     background: #f5f3ef;
     color: #2a2620;
@@ -75,6 +76,7 @@
   }
   #claude-usage-overlay:not(.cut-theme-light) .cut-rate-tooltip::after,
   #claude-usage-overlay:not(.cut-theme-light) .cut-donate-tooltip::after,
+  #claude-usage-overlay:not(.cut-theme-light) .cut-share-tooltip::after,
   #claude-usage-overlay:not(.cut-theme-light) .cut-close-tooltip::after {
     border-top-color: #f5f3ef;
   }
@@ -82,6 +84,7 @@
 
 #claude-usage-overlay.cut-theme-dark .cut-rate-tooltip,
 #claude-usage-overlay.cut-theme-dark .cut-donate-tooltip,
+#claude-usage-overlay.cut-theme-dark .cut-share-tooltip,
 #claude-usage-overlay.cut-theme-dark .cut-close-tooltip {
   background: #f5f3ef;
   color: #2a2620;
@@ -90,12 +93,14 @@
 
 #claude-usage-overlay.cut-theme-dark .cut-rate-tooltip::after,
 #claude-usage-overlay.cut-theme-dark .cut-donate-tooltip::after,
+#claude-usage-overlay.cut-theme-dark .cut-share-tooltip::after,
 #claude-usage-overlay.cut-theme-dark .cut-close-tooltip::after {
   border-top-color: #f5f3ef;
 }
 
 #claude-usage-overlay.cut-theme-light .cut-rate-tooltip,
 #claude-usage-overlay.cut-theme-light .cut-donate-tooltip,
+#claude-usage-overlay.cut-theme-light .cut-share-tooltip,
 #claude-usage-overlay.cut-theme-light .cut-close-tooltip {
   background: #1a1a1c;
   color: #f4f4f5;
@@ -271,14 +276,16 @@
 }
 
 #claude-usage-overlay .cut-rate-wrap,
-#claude-usage-overlay .cut-donate-wrap {
+#claude-usage-overlay .cut-donate-wrap,
+#claude-usage-overlay .cut-share-wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
 }
 
 #claude-usage-overlay .cut-rate-tooltip,
-#claude-usage-overlay .cut-donate-tooltip {
+#claude-usage-overlay .cut-donate-tooltip,
+#claude-usage-overlay .cut-share-tooltip {
   position: absolute;
   bottom: calc(100% + 10px);
   left: 50%;
@@ -304,7 +311,8 @@
 }
 
 #claude-usage-overlay .cut-rate-tooltip::after,
-#claude-usage-overlay .cut-donate-tooltip::after {
+#claude-usage-overlay .cut-donate-tooltip::after,
+#claude-usage-overlay .cut-share-tooltip::after {
   content: '';
   position: absolute;
   top: 100%;
@@ -319,7 +327,9 @@
 #claude-usage-overlay .cut-rate-wrap:hover .cut-rate-tooltip,
 #claude-usage-overlay .cut-rate:focus-visible + .cut-rate-tooltip,
 #claude-usage-overlay .cut-donate-wrap:hover .cut-donate-tooltip,
-#claude-usage-overlay .cut-donate:focus-visible + .cut-donate-tooltip {
+#claude-usage-overlay .cut-donate:focus-visible + .cut-donate-tooltip,
+#claude-usage-overlay .cut-share-wrap:not(.cut-pop-open):hover .cut-share-tooltip,
+#claude-usage-overlay .cut-share:focus-visible + .cut-share-tooltip {
   opacity: 1;
   visibility: visible;
   transform: translateX(-50%) translateY(-2px);
@@ -358,6 +368,96 @@
 
 #claude-usage-overlay .cut-rate .cut-rate-txt {
   letter-spacing: 0.01em;
+}
+
+#claude-usage-overlay .cut-share {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 999px;
+  font: inherit;
+  font-weight: 600;
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0.85;
+  white-space: nowrap;
+  transition: opacity 0.15s, background 0.15s, transform 0.15s;
+}
+
+#claude-usage-overlay .cut-share:hover {
+  opacity: 1;
+  transform: translateY(-0.5px);
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+#claude-usage-overlay .cut-share .cut-share-ic {
+  flex-shrink: 0;
+}
+
+#claude-usage-overlay .cut-share-pop {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 8px;
+  background: #1a1a1c;
+  padding: 7px 9px;
+  border-radius: 9px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
+  z-index: 2147483647;
+}
+
+#claude-usage-overlay .cut-share-pop::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border: 6px solid transparent;
+  border-top-color: #1a1a1c;
+}
+
+#claude-usage-overlay.cut-theme-dark .cut-share-pop {
+  background: #f5f3ef;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+#claude-usage-overlay.cut-theme-dark .cut-share-pop::after {
+  border-top-color: #f5f3ef;
+}
+
+#claude-usage-overlay .cut-share-net {
+  appearance: none;
+  border: none;
+  padding: 0;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  transition: transform 0.12s;
+}
+
+#claude-usage-overlay .cut-share-net svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+#claude-usage-overlay .cut-share-net:hover {
+  transform: translateY(-1px) scale(1.08);
 }
 
 #claude-usage-overlay .cut-donate {
@@ -488,6 +588,7 @@
   #claude-usage-overlay .cut-rate { padding: 2px 3px; }
   #claude-usage-overlay .cut-donate .cut-donate-txt { display: none; }
   #claude-usage-overlay .cut-donate { padding: 2px 3px; }
+  #claude-usage-overlay .cut-share { padding: 2px 3px; }
 }
 
 /* Tier 3 (< 400px): drop the rate and donate buttons and "N left" messages counter
@@ -525,7 +626,8 @@
   #claude-usage-overlay .cut-tooltip,
   #claude-usage-overlay .cut-close-tooltip,
   #claude-usage-overlay .cut-rate-tooltip,
-  #claude-usage-overlay .cut-donate-tooltip {
+  #claude-usage-overlay .cut-donate-tooltip,
+  #claude-usage-overlay .cut-share-tooltip {
     display: none;
   }
 }

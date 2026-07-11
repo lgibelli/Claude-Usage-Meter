@@ -167,6 +167,34 @@
   }
   let rated = false;
   let donateVisible = true;
+  let shared = false;
+  const SHARE_KEY = "share_clicked";
+  const CHROME_STORE_URL = "https://chromewebstore.google.com/detail/kgpahkcgadpnklinijdojapiadnfelae?utm_source=item-share-cb";
+  const EDGE_STORE_URL = "https://microsoftedge.microsoft.com/addons/detail/claude-usage-meter/anhdhmpfpgbohohjlbgnggnmcmkmmcbn";
+  function storeUrl() {
+    try {
+      const brands = navigator.userAgentData && navigator.userAgentData.brands;
+      if (Array.isArray(brands) && brands.some((b) => /edge/i.test(b.brand))) return EDGE_STORE_URL;
+    } catch (_) {}
+    try {
+      if (/Edg(e|A|iOS)?\//i.test(navigator.userAgent || "")) return EDGE_STORE_URL;
+    } catch (_) {}
+    return CHROME_STORE_URL;
+  }
+  const SHARE_TEXT = "Claude Usage Meter - see your Claude session & weekly usage limits live above the claude chat box. Free extension:";
+  const LINKEDIN_TEXT = "Claude Usage Meter - see your Claude usage above chat";
+  function shareIntentUrl(net) {
+    const u = encodeURIComponent(storeUrl());
+    const t = encodeURIComponent(SHARE_TEXT);
+    switch (net) {
+      case "linkedin": return `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(LINKEDIN_TEXT + " " + storeUrl())}`;
+      case "x": return `https://twitter.com/intent/tweet?text=${t}&url=${u}`;
+      case "whatsapp": return `https://api.whatsapp.com/send?text=${t}%20${u}`;
+      case "reddit": return `https://www.reddit.com/submit?url=${u}&title=${t}`;
+      case "facebook": return `https://www.facebook.com/sharer/sharer.php?u=${u}&quote=${t}`;
+      default: return storeUrl();
+    }
+  }
   let latestUsage = null;
   let latestMsgsRemaining = null;
 
@@ -243,13 +271,19 @@
           </button>
           <span class="cut-rate-tooltip" aria-hidden="true">Pls Rate us & this button disappears forever after you review.</span>
         </span>
-        <div class="cut-divider cut-donate-divider" data-cut="donate-divider"></div>
-        <span class="cut-donate-wrap" data-cut="donate-wrap">
-          <a href="${DONATE_LINK}" target="_blank" rel="noopener noreferrer" class="cut-donate" data-cut="donate"
-             aria-label="Support SelectorsHub on Buy Me a Coffee">
-            <span class="cut-donate-icon">❤️</span><span class="cut-donate-txt">Support</span>
-          </a>
-          <span class="cut-donate-tooltip" aria-hidden="true">Support us - this button hides for 30 days after you click.</span>
+        <div class="cut-divider cut-share-divider" data-cut="share-divider" style="display:none"></div>
+        <span class="cut-share-wrap" data-cut="share-wrap" style="display:none">
+          <button class="cut-share" type="button" data-cut="share" aria-label="Share Claude Usage Meter" title="">
+            <svg class="cut-share-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+          </button>
+          <span class="cut-share-tooltip" aria-hidden="true">Share with friends — this button disappears forever once you share.</span>
+          <span class="cut-share-pop" data-cut="share-pop" style="display:none">
+            <button class="cut-share-net" data-net="linkedin" title="Share on LinkedIn" aria-label="Share on LinkedIn"><svg viewBox="0 0 382 382" width="18" height="18"><path fill="#0077B7" d="M347.445,0H34.555C15.471,0,0,15.471,0,34.555v312.889C0,366.529,15.471,382,34.555,382h312.889 C366.529,382,382,366.529,382,347.444V34.555C382,15.471,366.529,0,347.445,0z M118.207,329.844c0,5.554-4.502,10.056-10.056,10.056 H65.345c-5.554,0-10.056-4.502-10.056-10.056V150.403c0-5.554,4.502-10.056,10.056-10.056h42.806 c5.554,0,10.056,4.502,10.056,10.056V329.844z M86.748,123.432c-22.459,0-40.666-18.207-40.666-40.666S64.289,42.1,86.748,42.1 s40.666,18.207,40.666,40.666S109.208,123.432,86.748,123.432z M341.91,330.654c0,5.106-4.14,9.246-9.246,9.246H286.73 c-5.106,0-9.246-4.14-9.246-9.246v-84.168c0-12.556,3.683-55.021-32.813-55.021c-28.309,0-34.051,29.066-35.204,42.11v97.079 c0,5.106-4.139,9.246-9.246,9.246h-44.426c-5.106,0-9.246-4.14-9.246-9.246V149.593c0-5.106,4.14-9.246,9.246-9.246h44.426 c5.106,0,9.246,4.14,9.246,9.246v15.655c10.497-15.753,26.097-27.912,59.312-27.912c73.552,0,73.131,68.716,73.131,106.472 L341.91,330.654L341.91,330.654z"/></svg></button>
+            <button class="cut-share-net" data-net="x" title="Share on X" aria-label="Share on X"><svg viewBox="0 0 24 24" width="18" height="18"><rect width="24" height="24" rx="5" fill="#000"/><path transform="translate(4.8 4.8) scale(0.6)" fill="#fff" d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8 -7.584 -6.638 7.584H0.474l8.6 -9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg></button>
+            <button class="cut-share-net" data-net="whatsapp" title="Share on WhatsApp" aria-label="Share on WhatsApp"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="20.0 19.1 581.6 581.6" width="18" height="18"><defs><linearGradient x1=".5" y1="0" x2=".5" y2="1" id="cwa-a"><stop stop-color="#20B038" offset="0%"/><stop stop-color="#60D66A" offset="100%"/></linearGradient><linearGradient x1=".5" y1="0" x2=".5" y2="1" id="cwa-b"><stop stop-color="#F9F9F9" offset="0%"/><stop stop-color="#FFF" offset="100%"/></linearGradient><linearGradient xlink:href="#cwa-a" id="cwa-f" x1="270.265" y1="1.184" x2="270.265" y2="541.56" gradientTransform="scale(.99775 1.00225)" gradientUnits="userSpaceOnUse"/><linearGradient xlink:href="#cwa-b" id="cwa-g" x1="279.952" y1=".811" x2="279.952" y2="560.571" gradientTransform="scale(.99777 1.00224)" gradientUnits="userSpaceOnUse"/><filter x="-.056" y="-.062" width="1.112" height="1.11" filterUnits="objectBoundingBox" id="cwa-c"><feGaussianBlur stdDeviation="2" in="SourceGraphic"/></filter><filter x="-.082" y="-.088" width="1.164" height="1.162" filterUnits="objectBoundingBox" id="cwa-d"><feOffset dy="-4" in="SourceAlpha" result="shadowOffsetOuter1"/><feGaussianBlur stdDeviation="12.5" in="shadowOffsetOuter1" result="shadowBlurOuter1"/><feComposite in="shadowBlurOuter1" in2="SourceAlpha" operator="out" result="shadowBlurOuter1"/><feColorMatrix values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.21 0" in="shadowBlurOuter1"/></filter><path d="M576.337 707.516c-.018-49.17 12.795-97.167 37.15-139.475L574 423.48l147.548 38.792c40.652-22.23 86.423-33.944 133.002-33.962h.12c153.395 0 278.265 125.166 278.33 278.98.025 74.548-28.9 144.642-81.446 197.373C999 957.393 929.12 986.447 854.67 986.48c-153.42 0-278.272-125.146-278.333-278.964z" id="cwa-e"/></defs><g fill="none" fill-rule="evenodd"><g transform="matrix(1 0 0 -1 -542.696 1013.504)" fill="#000" fill-rule="nonzero" filter="url(#cwa-c)"><use filter="url(#cwa-d)" xlink:href="#cwa-e" width="100%" height="100%"/><use fill-opacity=".2" xlink:href="#cwa-e" width="100%" height="100%"/></g><path transform="matrix(1 0 0 -1 41.304 577.504)" fill-rule="nonzero" fill="url(#cwa-f)" d="M2.325 274.421c-.014-47.29 12.342-93.466 35.839-134.166L.077 1.187l142.314 37.316C181.6 17.133 225.745 5.856 270.673 5.84h.12c147.95 0 268.386 120.396 268.447 268.372.03 71.707-27.87 139.132-78.559 189.858-50.68 50.726-118.084 78.676-189.898 78.708-147.968 0-268.398-120.386-268.458-268.358"/><path transform="matrix(1 0 0 -1 31.637 586.837)" fill-rule="nonzero" fill="url(#cwa-g)" d="M2.407 283.847c-.018-48.996 12.784-96.824 37.117-138.983L.072.814l147.419 38.654c40.616-22.15 86.346-33.824 132.885-33.841h.12c153.26 0 278.02 124.724 278.085 277.994.026 74.286-28.874 144.132-81.374 196.678-52.507 52.544-122.326 81.494-196.711 81.528-153.285 0-278.028-124.704-278.09-277.98zm87.789-131.724l-5.503 8.74C61.555 197.653 49.34 240.17 49.36 283.828c.049 127.399 103.73 231.044 231.224 231.044 61.74-.025 119.765-24.09 163.409-67.763 43.639-43.67 67.653-101.726 67.635-163.469-.054-127.403-103.739-231.063-231.131-231.063h-.09c-41.482.022-82.162 11.159-117.642 32.214l-8.444 5.004L66.84 66.86z"/><path d="M242.63 186.78c-5.205-11.57-10.684-11.803-15.636-12.006-4.05-.173-8.687-.162-13.316-.162-4.632 0-12.161 1.74-18.527 8.693-6.37 6.953-24.322 23.761-24.322 57.947 0 34.19 24.901 67.222 28.372 71.862 3.474 4.634 48.07 77.028 118.694 104.88 58.696 23.146 70.64 18.542 83.38 17.384 12.74-1.158 41.11-16.805 46.9-33.03 5.791-16.223 5.791-30.128 4.054-33.035-1.738-2.896-6.37-4.633-13.319-8.108-6.95-3.475-41.11-20.287-47.48-22.603-6.37-2.316-11.003-3.474-15.635 3.482-4.633 6.95-17.94 22.596-21.996 27.23-4.053 4.643-8.106 5.222-15.056 1.747-6.949-3.485-29.328-10.815-55.876-34.485-20.656-18.416-34.6-41.16-38.656-48.116-4.053-6.95-.433-10.714 3.052-14.178 3.12-3.113 6.95-8.11 10.424-12.168 3.467-4.057 4.626-6.953 6.942-11.586 2.316-4.64 1.158-8.698-.579-12.172-1.737-3.475-15.241-37.838-21.42-51.576" fill="#FFF"/></g></svg></button>
+            <button class="cut-share-net" data-net="reddit" title="Share on Reddit" aria-label="Share on Reddit"><svg viewBox="0 0 24 24" width="18" height="18"><rect width="24" height="24" rx="5" fill="#FF4500"/><ellipse cx="12" cy="14.2" rx="7.2" ry="5" fill="#fff"/><circle cx="4.6" cy="12.4" r="1.9" fill="#fff"/><circle cx="19.4" cy="12.4" r="1.9" fill="#fff"/><circle cx="17.6" cy="4.8" r="1.5" fill="#fff"/><path d="M12 9.6l1.1-4.6 3.4.8" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/><circle cx="9.3" cy="13.4" r="1.2" fill="#FF4500"/><circle cx="14.7" cy="13.4" r="1.2" fill="#FF4500"/><path d="M9.4 16.4c1.6 1.2 3.6 1.2 5.2 0" stroke="#FF4500" stroke-width="1" fill="none" stroke-linecap="round"/></svg></button>
+            <button class="cut-share-net" data-net="facebook" title="Share on Facebook" aria-label="Share on Facebook"><svg viewBox="0 0 16 16" width="18" height="18"><path fill="#1877F2" d="M15 8a7 7 0 0 0-7-7 7 7 0 0 0-1.094 13.915v-4.892H5.13V8h1.777V6.458c0-1.754 1.045-2.724 2.644-2.724.766 0 1.567.137 1.567.137v1.723h-.883c-.87 0-1.14.54-1.14 1.093V8h1.941l-.31 2.023H9.094v4.892A7 7 0 0 0 15 8"/><path fill="#fff" d="M10.725 10.023 11.035 8H9.094V6.687c0-.553.27-1.093 1.14-1.093h.883V3.87s-.801-.137-1.567-.137c-1.6 0-2.644.97-2.644 2.724V8H5.13v2.023h1.777v4.892a7 7 0 0 0 2.188 0v-4.892z"/></svg></button>
+          </span>
         </span>
         <span class="cut-close-wrap">
           <button class="cut-close" type="button" aria-label="Hide the strip for 12 hours">×</button>
@@ -271,6 +305,8 @@
         applyRateVisibility(root);
         // Rate us is gone now — the Support button takes its place.
         applyDonateVisibility(root);
+        // The Share button appears once the user has rated.
+        applyShareVisibility(root);
         // Persist the flag directly so the button never returns, even if the
         // background message below fails and we take the fallback path.
         try { chrome.storage.local.set({ [RATE_KEY]: true }); } catch (_) {}
@@ -292,8 +328,29 @@
         applyDonateVisibility(root);
       });
     }
+    const shareBtn = root.querySelector(".cut-share");
+    if (shareBtn) {
+      shareBtn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        // Mark as shared immediately — the button never comes back after
+        // this click, even if the user closes the popover without picking
+        // a network.
+        shared = true;
+        try { chrome.storage.local.set({ [SHARE_KEY]: true }); } catch (_) {}
+        openSharePop(root);
+      });
+    }
+    root.querySelectorAll(".cut-share-net").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const net = btn.getAttribute("data-net");
+        try { window.open(shareIntentUrl(net), "_blank", "noopener"); } catch (_) {}
+        closeSharePop(root);
+      });
+    });
     applyRateVisibility(root);
     applyDonateVisibility(root);
+    applyShareVisibility(root);
     root.addEventListener("click", e => e.stopPropagation());
     return root;
   }
@@ -305,6 +362,52 @@
     const display = rated ? "none" : "";
     if (rb) rb.style.display = display;
     if (rd) rd.style.display = display;
+  }
+
+  let sharePopOpen = false;
+  let sharePopOutsideHandler = null;
+
+  function applyShareVisibility(root) {
+    if (!root) return;
+    const sw = root.querySelector('[data-cut="share-wrap"]');
+    const sd = root.querySelector('[data-cut="share-divider"]');
+    if (!sw || !sd) return;
+    // Visible only after the user has rated and before they've shared.
+    // While the network popover is open, keep the wrap visible so the
+    // popover stays anchored, even though the shared flag is already set.
+    const show = (rated && !shared) || sharePopOpen;
+    const display = show ? "" : "none";
+    sw.style.display = display;
+    sd.style.display = display;
+  }
+
+  function openSharePop(root) {
+    const wrap = root.querySelector('[data-cut="share-wrap"]');
+    const pop = root.querySelector('[data-cut="share-pop"]');
+    if (!wrap || !pop) return;
+    sharePopOpen = true;
+    wrap.classList.add("cut-pop-open");
+    pop.style.display = "flex";
+    // Close when clicking anywhere outside the popover.
+    sharePopOutsideHandler = (ev) => {
+      if (!pop.contains(ev.target)) closeSharePop(root);
+    };
+    setTimeout(() => {
+      document.addEventListener("click", sharePopOutsideHandler, true);
+    }, 0);
+  }
+
+  function closeSharePop(root) {
+    sharePopOpen = false;
+    if (sharePopOutsideHandler) {
+      document.removeEventListener("click", sharePopOutsideHandler, true);
+      sharePopOutsideHandler = null;
+    }
+    const wrap = root && root.querySelector('[data-cut="share-wrap"]');
+    const pop = root && root.querySelector('[data-cut="share-pop"]');
+    if (pop) pop.style.display = "none";
+    if (wrap) wrap.classList.remove("cut-pop-open");
+    applyShareVisibility(root);
   }
 
   async function applyDonateVisibility(root) {
@@ -367,6 +470,7 @@
     renderSegment(root.querySelector('[data-cut="weekly"]'),  latestUsage && latestUsage.weekly,  weeklyLabel(latestUsage && latestUsage.weekly));
     applyRateVisibility(root);
     applyDonateVisibility(root);
+    if (!sharePopOpen) applyShareVisibility(root);
 
     const msgsEl  = root.querySelector('[data-cut="msgs"]');
     const msgsDiv = root.querySelector('[data-cut="msgs-divider"]');
@@ -494,8 +598,9 @@
         latestMsgsRemaining = resp.usage.messagesRemaining;
       }
       try {
-        const { [RATE_KEY]: rv } = await chrome.storage.local.get(RATE_KEY);
+        const { [RATE_KEY]: rv, [SHARE_KEY]: sv } = await chrome.storage.local.get([RATE_KEY, SHARE_KEY]);
         rated = !!rv;
+        shared = !!sv;
       } catch (_) {}
       ensureMounted();
     } catch (_) {}
@@ -508,8 +613,16 @@
       rated = !!changes[RATE_KEY].newValue;
       const root = document.getElementById(OVERLAY_ID);
       applyRateVisibility(root);
-      // Donate visibility depends on the rated flag too.
-      if (root) applyDonateVisibility(root);
+      // Donate and Share visibility depend on the rated flag too.
+      if (root) {
+        applyDonateVisibility(root);
+        applyShareVisibility(root);
+      }
+    }
+    if (changes[SHARE_KEY]) {
+      shared = !!changes[SHARE_KEY].newValue;
+      const root = document.getElementById(OVERLAY_ID);
+      if (root && !sharePopOpen) applyShareVisibility(root);
     }
     if (changes[DONATE_KEY]) {
       const root = document.getElementById(OVERLAY_ID);

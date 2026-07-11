@@ -319,6 +319,78 @@ document.getElementById("donate-btn").addEventListener("click", async (e) => {
   // Let the link open normally (target="_blank" will handle it)
 });
 
+/* ---- Share ---- */
+const CHROME_STORE_URL = "https://chromewebstore.google.com/detail/kgpahkcgadpnklinijdojapiadnfelae?utm_source=item-share-cb";
+const EDGE_STORE_URL = "https://microsoftedge.microsoft.com/addons/detail/claude-usage-meter/anhdhmpfpgbohohjlbgnggnmcmkmmcbn";
+
+function getStoreUrl() {
+  return isEdgeBrowser() ? EDGE_STORE_URL : CHROME_STORE_URL;
+}
+
+const SHARE_TEXT = "Claude Usage Meter - see your Claude session & weekly usage limits live above the claude chat box. Free extension:";
+const LINKEDIN_TEXT = "Claude Usage Meter - see your Claude usage above chat";
+
+function shareIntentUrl(net) {
+  const url = encodeURIComponent(getStoreUrl());
+  const text = encodeURIComponent(SHARE_TEXT);
+  switch (net) {
+    case "linkedin": return `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(LINKEDIN_TEXT + " " + getStoreUrl())}`;
+    case "x": return `https://twitter.com/intent/tweet?text=${text}&url=${url}`;
+    case "whatsapp": return `https://api.whatsapp.com/send?text=${text}%20${url}`;
+    case "reddit": return `https://www.reddit.com/submit?url=${url}&title=${text}`;
+    case "facebook": return `https://www.facebook.com/sharer/sharer.php?u=${url}&quote=${text}`;
+    default: return getStoreUrl();
+  }
+}
+
+const sharePanel = document.getElementById("share-panel");
+const shareBtn = document.getElementById("share-btn");
+const shareUrlEl = document.getElementById("share-url");
+if (shareUrlEl) shareUrlEl.textContent = getStoreUrl();
+
+if (shareBtn && sharePanel) {
+  shareBtn.addEventListener("click", () => {
+    const open = sharePanel.classList.toggle("hidden");
+    shareBtn.setAttribute("aria-expanded", String(!open));
+  });
+}
+
+document.querySelectorAll(".share-net").forEach((btn) => {
+  btn.addEventListener("click", async () => {
+    const net = btn.getAttribute("data-net");
+    try {
+      await chrome.tabs.create({ url: shareIntentUrl(net) });
+    } catch (_) {
+      try { window.open(shareIntentUrl(net), "_blank", "noopener"); } catch (_) {}
+    }
+  });
+});
+
+const shareCopyBtn = document.getElementById("share-copy-btn");
+if (shareCopyBtn) {
+  shareCopyBtn.addEventListener("click", async () => {
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(getStoreUrl());
+      ok = true;
+    } catch (_) {
+      // Fallback for environments where the async clipboard API is blocked
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = getStoreUrl();
+        document.body.appendChild(ta);
+        ta.select();
+        ok = document.execCommand("copy");
+        ta.remove();
+      } catch (_) {}
+    }
+    if (ok) {
+      shareCopyBtn.textContent = "Copied!";
+      setTimeout(() => { shareCopyBtn.textContent = "Copy"; }, 1500);
+    }
+  });
+}
+
 (async () => {
   await refresh({ forceFetch: false });
   await refreshStripButtonState();
