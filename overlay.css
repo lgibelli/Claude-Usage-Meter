@@ -69,6 +69,8 @@
   #claude-usage-overlay:not(.cut-theme-light) .cut-rate-tooltip,
   #claude-usage-overlay:not(.cut-theme-light) .cut-donate-tooltip,
   #claude-usage-overlay:not(.cut-theme-light) .cut-share-tooltip,
+  #claude-usage-overlay:not(.cut-theme-light) .cut-collapse-tooltip,
+  #claude-usage-overlay:not(.cut-theme-light) .cut-ctip,
   #claude-usage-overlay:not(.cut-theme-light) .cut-close-tooltip {
     background: #f5f3ef;
     color: #2a2620;
@@ -77,6 +79,8 @@
   #claude-usage-overlay:not(.cut-theme-light) .cut-rate-tooltip::after,
   #claude-usage-overlay:not(.cut-theme-light) .cut-donate-tooltip::after,
   #claude-usage-overlay:not(.cut-theme-light) .cut-share-tooltip::after,
+  #claude-usage-overlay:not(.cut-theme-light) .cut-collapse-tooltip::after,
+  #claude-usage-overlay:not(.cut-theme-light) .cut-ctip::after,
   #claude-usage-overlay:not(.cut-theme-light) .cut-close-tooltip::after {
     border-top-color: #f5f3ef;
   }
@@ -85,6 +89,8 @@
 #claude-usage-overlay.cut-theme-dark .cut-rate-tooltip,
 #claude-usage-overlay.cut-theme-dark .cut-donate-tooltip,
 #claude-usage-overlay.cut-theme-dark .cut-share-tooltip,
+#claude-usage-overlay.cut-theme-dark .cut-collapse-tooltip,
+#claude-usage-overlay.cut-theme-dark .cut-ctip,
 #claude-usage-overlay.cut-theme-dark .cut-close-tooltip {
   background: #f5f3ef;
   color: #2a2620;
@@ -94,6 +100,8 @@
 #claude-usage-overlay.cut-theme-dark .cut-rate-tooltip::after,
 #claude-usage-overlay.cut-theme-dark .cut-donate-tooltip::after,
 #claude-usage-overlay.cut-theme-dark .cut-share-tooltip::after,
+#claude-usage-overlay.cut-theme-dark .cut-collapse-tooltip::after,
+#claude-usage-overlay.cut-theme-dark .cut-ctip::after,
 #claude-usage-overlay.cut-theme-dark .cut-close-tooltip::after {
   border-top-color: #f5f3ef;
 }
@@ -101,6 +109,8 @@
 #claude-usage-overlay.cut-theme-light .cut-rate-tooltip,
 #claude-usage-overlay.cut-theme-light .cut-donate-tooltip,
 #claude-usage-overlay.cut-theme-light .cut-share-tooltip,
+#claude-usage-overlay.cut-theme-light .cut-collapse-tooltip,
+#claude-usage-overlay.cut-theme-light .cut-ctip,
 #claude-usage-overlay.cut-theme-light .cut-close-tooltip {
   background: #1a1a1c;
   color: #f4f4f5;
@@ -285,7 +295,9 @@
 
 #claude-usage-overlay .cut-rate-tooltip,
 #claude-usage-overlay .cut-donate-tooltip,
-#claude-usage-overlay .cut-share-tooltip {
+#claude-usage-overlay .cut-share-tooltip,
+#claude-usage-overlay .cut-collapse-tooltip,
+#claude-usage-overlay .cut-ctip {
   position: absolute;
   bottom: calc(100% + 10px);
   left: 50%;
@@ -312,7 +324,9 @@
 
 #claude-usage-overlay .cut-rate-tooltip::after,
 #claude-usage-overlay .cut-donate-tooltip::after,
-#claude-usage-overlay .cut-share-tooltip::after {
+#claude-usage-overlay .cut-share-tooltip::after,
+#claude-usage-overlay .cut-collapse-tooltip::after,
+#claude-usage-overlay .cut-ctip::after {
   content: '';
   position: absolute;
   top: 100%;
@@ -329,7 +343,11 @@
 #claude-usage-overlay .cut-donate-wrap:hover .cut-donate-tooltip,
 #claude-usage-overlay .cut-donate:focus-visible + .cut-donate-tooltip,
 #claude-usage-overlay .cut-share-wrap:not(.cut-pop-open):hover .cut-share-tooltip,
-#claude-usage-overlay .cut-share:focus-visible + .cut-share-tooltip {
+#claude-usage-overlay .cut-share:focus-visible + .cut-share-tooltip,
+#claude-usage-overlay .cut-collapse-wrap:hover .cut-collapse-tooltip,
+#claude-usage-overlay .cut-collapse:focus-visible + .cut-collapse-tooltip,
+#claude-usage-overlay .cut-cwrap:hover .cut-ctip,
+#claude-usage-overlay .cut-cval:focus-visible + .cut-ctip {
   opacity: 1;
   visibility: visible;
   transform: translateX(-50%) translateY(-2px);
@@ -591,11 +609,10 @@
   #claude-usage-overlay .cut-share { padding: 2px 3px; }
 }
 
-/* Tier 3 (< 400px): drop the rate and donate buttons and "N left" messages counter
-   entirely (both remain available in the popup). */
+/* Tier 3 (< 400px): drop the "N left" messages counter and legacy donate
+   button. The Rate us star and Share icon stay (as icons, per their own
+   rated/shared availability) since they're tiny. */
 @container cut-overlay (max-width: 400px) {
-  #claude-usage-overlay .cut-rate,
-  #claude-usage-overlay .cut-rate-divider,
   #claude-usage-overlay .cut-donate,
   #claude-usage-overlay .cut-donate-divider,
   #claude-usage-overlay .cut-msgs,
@@ -627,7 +644,269 @@
   #claude-usage-overlay .cut-close-tooltip,
   #claude-usage-overlay .cut-rate-tooltip,
   #claude-usage-overlay .cut-donate-tooltip,
-  #claude-usage-overlay .cut-share-tooltip {
+  #claude-usage-overlay .cut-share-tooltip,
+  #claude-usage-overlay .cut-collapse-tooltip,
+  #claude-usage-overlay .cut-ctip {
     display: none;
   }
+}
+
+
+/* ---- Collapse / compact mode ---- */
+#claude-usage-overlay .cut-collapse-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+#claude-usage-overlay .cut-collapse {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 3px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  line-height: 1;
+  opacity: 0.7;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+#claude-usage-overlay .cut-collapse:hover {
+  opacity: 1;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+#claude-usage-overlay .cut-collapse svg {
+  display: block;
+  transition: transform 0.2s ease;
+}
+
+/* When collapsed, flip the chevrons to point outward (expand) */
+#claude-usage-overlay.cut-collapsed .cut-collapse svg {
+  transform: rotate(180deg);
+}
+
+#claude-usage-overlay .cut-compact {
+  display: none;
+  align-items: center;
+  gap: 10px;
+}
+
+#claude-usage-overlay .cut-cwrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+#claude-usage-overlay .cut-cval {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  white-space: nowrap;
+  cursor: default;
+  outline: none;
+}
+
+/* S / W letters: full-size capitals, default label color */
+#claude-usage-overlay .cut-clabel {
+  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+}
+
+/* % values match the expanded view's percentage styling */
+#claude-usage-overlay .cut-cpct {
+  font-weight: 600;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* | separator between S and W, same look as the strip dividers */
+#claude-usage-overlay .cut-cdivider {
+  display: inline-block;
+  width: 1px;
+  height: 13px;
+  background: color-mix(in srgb, currentColor 22%, transparent);
+  flex-shrink: 0;
+}
+
+/* Collapsed mode: show only the compact block between the brand and the
+   collapse/close controls. !important is needed to beat inline display
+   styles set by the JS visibility functions. */
+#claude-usage-overlay.cut-collapsed .cut-seg,
+#claude-usage-overlay.cut-collapsed .cut-divider,
+#claude-usage-overlay.cut-collapsed .cut-msgs {
+  display: none !important;
+}
+
+/* Rate us / Share stay in collapsed mode (their own rated/shared visibility
+   rules still apply via inline styles) — but Rate us shrinks to just its star. */
+#claude-usage-overlay.cut-collapsed .cut-rate .cut-rate-txt {
+  display: none;
+}
+#claude-usage-overlay.cut-collapsed .cut-rate {
+  padding: 2px 3px;
+}
+
+#claude-usage-overlay.cut-collapsed .cut-compact {
+  display: inline-flex;
+}
+
+/* Minimal compact tooltips size to their short text */
+#claude-usage-overlay .cut-ctip {
+  width: auto;
+  white-space: nowrap;
+  padding: 5px 9px;
+}
+
+/* Compact % colors mirror the full-view % colors */
+#claude-usage-overlay .cut-cpct.cut-color-green  { color: #10b981; }
+#claude-usage-overlay .cut-cpct.cut-color-amber  { color: #f59e0b; }
+#claude-usage-overlay .cut-cpct.cut-color-orange { color: #f97316; }
+#claude-usage-overlay .cut-cpct.cut-color-red    { color: #ef4444; font-weight: 700; }
+
+/* ---- Share popover, portaled to <body> ----
+   While open, the popover is moved out of the strip (see content-script.js)
+   so it can't be clipped by the overlay's containment or the narrow-mode
+   scroll. These styles are self-contained since the #claude-usage-overlay
+   scope no longer applies. */
+.cut-share-pop-portal {
+  align-items: center;
+  gap: 8px;
+  background: #1a1a1c;
+  padding: 7px 9px;
+  border-radius: 9px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
+  z-index: 2147483647;
+  font: 500 11.5px/1 ui-sans-serif, -apple-system, sans-serif;
+}
+
+.cut-share-pop-portal::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: var(--cut-arrow-x, 50%);
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border: 6px solid transparent;
+  border-top-color: #1a1a1c;
+}
+
+/* Flipped: popover below the button, arrow on top pointing up */
+.cut-share-pop-portal.cut-pop-below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: #1a1a1c;
+}
+
+.cut-share-pop-portal.cut-pop-dark {
+  background: #f5f3ef;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.cut-share-pop-portal.cut-pop-dark::after {
+  border-top-color: #f5f3ef;
+}
+
+.cut-share-pop-portal.cut-pop-dark.cut-pop-below::after {
+  border-top-color: transparent;
+  border-bottom-color: #f5f3ef;
+}
+
+.cut-share-pop-portal .cut-share-net {
+  appearance: none;
+  border: none;
+  padding: 0;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  transition: transform 0.12s;
+}
+
+.cut-share-pop-portal .cut-share-net svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+}
+
+.cut-share-pop-portal .cut-share-net:hover {
+  transform: translateY(-1px) scale(1.08);
+}
+
+/* ---- Portal tooltip system ----
+   In-strip tooltip spans are text sources only; the visible tooltip is a
+   single fixed-position .cut-portal-tip under <body> (content-script.js),
+   which escapes ancestor overflow clipping in small/design-mode windows.
+   Force-hide the spans so the legacy CSS hover rules can never show them. */
+#claude-usage-overlay .cut-tooltip,
+#claude-usage-overlay .cut-close-tooltip,
+#claude-usage-overlay .cut-rate-tooltip,
+#claude-usage-overlay .cut-donate-tooltip,
+#claude-usage-overlay .cut-share-tooltip,
+#claude-usage-overlay .cut-collapse-tooltip,
+#claude-usage-overlay .cut-ctip {
+  display: none !important;
+}
+
+.cut-portal-tip {
+  position: fixed;
+  background: #1a1a1c;
+  color: #f4f4f5;
+  padding: 8px 11px;
+  border-radius: 7px;
+  font: 400 11.5px/1.45 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0.01em;
+  max-width: 230px;
+  width: max-content;
+  white-space: normal;
+  pointer-events: none;
+  z-index: 2147483647;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
+  text-align: left;
+}
+
+.cut-portal-tip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: var(--cut-arrow-x, 50%);
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border: 6px solid transparent;
+  border-top-color: #1a1a1c;
+}
+
+.cut-portal-tip.cut-pop-below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: #1a1a1c;
+}
+
+/* Dark site theme → light tooltip card, matching the old inversion */
+.cut-portal-tip.cut-pop-dark {
+  background: #f5f3ef;
+  color: #2a2620;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.cut-portal-tip.cut-pop-dark::after {
+  border-top-color: #f5f3ef;
+}
+
+.cut-portal-tip.cut-pop-dark.cut-pop-below::after {
+  border-top-color: transparent;
+  border-bottom-color: #f5f3ef;
 }

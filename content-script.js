@@ -168,6 +168,19 @@
   let rated = false;
   let donateVisible = true;
   let shared = false;
+  let collapsed = false;
+  const COLLAPSE_KEY = "strip_collapsed";
+
+  function applyCollapsed(root) {
+    if (!root) return;
+    root.classList.toggle("cut-collapsed", collapsed);
+    const btn = root.querySelector('[data-cut="collapse"]');
+    const tip = root.querySelector('[data-cut="collapse-tip"]');
+    if (btn) btn.setAttribute("aria-label", collapsed ? "Expand the usage strip" : "Collapse the usage strip");
+    if (tip) tip.textContent = collapsed
+      ? "Expand the strip back to the full view."
+      : "Collapse the strip to a compact view (S = session, W = weekly). Click again anytime to expand.";
+  }
   const SHARE_KEY = "share_clicked";
   const CHROME_STORE_URL = "https://chromewebstore.google.com/detail/kgpahkcgadpnklinijdojapiadnfelae?utm_source=item-share-cb";
   const EDGE_STORE_URL = "https://microsoftedge.microsoft.com/addons/detail/claude-usage-meter/anhdhmpfpgbohohjlbgnggnmcmkmmcbn";
@@ -261,6 +274,17 @@
           <span class="cut-sep">·</span>
           <span class="cut-meta" data-cut-meta>—</span>
         </div>
+        <div class="cut-compact" data-cut="compact">
+          <span class="cut-cwrap">
+            <span class="cut-cval" tabindex="0"><span class="cut-clabel">S</span> <span class="cut-cpct" data-cut="c-session">—</span></span>
+            <span class="cut-ctip" data-cut="c-session-tip" aria-hidden="true">Waiting for data</span>
+          </span>
+          <span class="cut-cdivider" aria-hidden="true"></span>
+          <span class="cut-cwrap">
+            <span class="cut-cval" tabindex="0"><span class="cut-clabel">W</span> <span class="cut-cpct" data-cut="c-weekly">—</span></span>
+            <span class="cut-ctip" data-cut="c-weekly-tip" aria-hidden="true">Waiting for data</span>
+          </span>
+        </div>
         <div class="cut-divider cut-msgs-divider" data-cut="msgs-divider" hidden></div>
         <span class="cut-msgs" data-cut="msgs" hidden></span>
         <div class="cut-divider cut-rate-divider" data-cut="rate-divider"></div>
@@ -276,7 +300,7 @@
           <button class="cut-share" type="button" data-cut="share" aria-label="Share Claude Usage Meter" title="">
             <svg class="cut-share-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
           </button>
-          <span class="cut-share-tooltip" aria-hidden="true">Share with friends — this button disappears forever once you share.</span>
+          <span class="cut-share-tooltip" aria-hidden="true">Share with friends - this button disappears forever once you share.</span>
           <span class="cut-share-pop" data-cut="share-pop" style="display:none">
             <button class="cut-share-net" data-net="linkedin" title="Share on LinkedIn" aria-label="Share on LinkedIn"><svg viewBox="0 0 382 382" width="18" height="18"><path fill="#0077B7" d="M347.445,0H34.555C15.471,0,0,15.471,0,34.555v312.889C0,366.529,15.471,382,34.555,382h312.889 C366.529,382,382,366.529,382,347.444V34.555C382,15.471,366.529,0,347.445,0z M118.207,329.844c0,5.554-4.502,10.056-10.056,10.056 H65.345c-5.554,0-10.056-4.502-10.056-10.056V150.403c0-5.554,4.502-10.056,10.056-10.056h42.806 c5.554,0,10.056,4.502,10.056,10.056V329.844z M86.748,123.432c-22.459,0-40.666-18.207-40.666-40.666S64.289,42.1,86.748,42.1 s40.666,18.207,40.666,40.666S109.208,123.432,86.748,123.432z M341.91,330.654c0,5.106-4.14,9.246-9.246,9.246H286.73 c-5.106,0-9.246-4.14-9.246-9.246v-84.168c0-12.556,3.683-55.021-32.813-55.021c-28.309,0-34.051,29.066-35.204,42.11v97.079 c0,5.106-4.139,9.246-9.246,9.246h-44.426c-5.106,0-9.246-4.14-9.246-9.246V149.593c0-5.106,4.14-9.246,9.246-9.246h44.426 c5.106,0,9.246,4.14,9.246,9.246v15.655c10.497-15.753,26.097-27.912,59.312-27.912c73.552,0,73.131,68.716,73.131,106.472 L341.91,330.654L341.91,330.654z"/></svg></button>
             <button class="cut-share-net" data-net="x" title="Share on X" aria-label="Share on X"><svg viewBox="0 0 24 24" width="18" height="18"><rect width="24" height="24" rx="5" fill="#000"/><path transform="translate(4.8 4.8) scale(0.6)" fill="#fff" d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8 -7.584 -6.638 7.584H0.474l8.6 -9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg></button>
@@ -284,6 +308,12 @@
             <button class="cut-share-net" data-net="reddit" title="Share on Reddit" aria-label="Share on Reddit"><svg viewBox="0 0 24 24" width="18" height="18"><rect width="24" height="24" rx="5" fill="#FF4500"/><ellipse cx="12" cy="14.2" rx="7.2" ry="5" fill="#fff"/><circle cx="4.6" cy="12.4" r="1.9" fill="#fff"/><circle cx="19.4" cy="12.4" r="1.9" fill="#fff"/><circle cx="17.6" cy="4.8" r="1.5" fill="#fff"/><path d="M12 9.6l1.1-4.6 3.4.8" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/><circle cx="9.3" cy="13.4" r="1.2" fill="#FF4500"/><circle cx="14.7" cy="13.4" r="1.2" fill="#FF4500"/><path d="M9.4 16.4c1.6 1.2 3.6 1.2 5.2 0" stroke="#FF4500" stroke-width="1" fill="none" stroke-linecap="round"/></svg></button>
             <button class="cut-share-net" data-net="facebook" title="Share on Facebook" aria-label="Share on Facebook"><svg viewBox="0 0 16 16" width="18" height="18"><path fill="#1877F2" d="M15 8a7 7 0 0 0-7-7 7 7 0 0 0-1.094 13.915v-4.892H5.13V8h1.777V6.458c0-1.754 1.045-2.724 2.644-2.724.766 0 1.567.137 1.567.137v1.723h-.883c-.87 0-1.14.54-1.14 1.093V8h1.941l-.31 2.023H9.094v4.892A7 7 0 0 0 15 8"/><path fill="#fff" d="M10.725 10.023 11.035 8H9.094V6.687c0-.553.27-1.093 1.14-1.093h.883V3.87s-.801-.137-1.567-.137c-1.6 0-2.644.97-2.644 2.724V8H5.13v2.023h1.777v4.892a7 7 0 0 0 2.188 0v-4.892z"/></svg></button>
           </span>
+        </span>
+        <span class="cut-collapse-wrap">
+          <button class="cut-collapse" type="button" data-cut="collapse" aria-label="Collapse the usage strip">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"></polyline><polyline points="18 17 13 12 18 7"></polyline></svg>
+          </button>
+          <span class="cut-collapse-tooltip" data-cut="collapse-tip" aria-hidden="true">Collapse the strip to a compact view (S = session, W = weekly). Click again anytime to expand.</span>
         </span>
         <span class="cut-close-wrap">
           <button class="cut-close" type="button" aria-label="Hide the strip for 12 hours">×</button>
@@ -348,11 +378,122 @@
         closeSharePop(root);
       });
     });
+    const collapseBtn = root.querySelector('[data-cut="collapse"]');
+    if (collapseBtn) {
+      collapseBtn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        collapsed = !collapsed;
+        try { chrome.storage.local.set({ [COLLAPSE_KEY]: collapsed }); } catch (_) {}
+        applyCollapsed(root);
+      });
+    }
     applyRateVisibility(root);
     applyDonateVisibility(root);
     applyShareVisibility(root);
+    applyCollapsed(root);
+    attachTooltips(root);
     root.addEventListener("click", e => e.stopPropagation());
     return root;
+  }
+
+  // ---- Portal tooltips -------------------------------------------------
+  // All hover tooltips render in a single fixed-position node under <body>.
+  // CSS-only tooltips positioned inside the strip get clipped in small chat
+  // windows (design/split mode) by ancestor overflow and the overlay's
+  // containment, so — like the share popover — tooltips escape via a portal.
+  let portalTipEl = null;
+
+  function ensurePortalTip() {
+    if (portalTipEl && portalTipEl.isConnected) return portalTipEl;
+    portalTipEl = document.createElement("div");
+    portalTipEl.className = "cut-portal-tip";
+    portalTipEl.style.display = "none";
+    document.body.appendChild(portalTipEl);
+    return portalTipEl;
+  }
+
+  function showPortalTip(anchor, html) {
+    if (!html) return;
+    const root = document.getElementById(OVERLAY_ID);
+    const tip = ensurePortalTip();
+    tip.classList.toggle("cut-pop-dark", !!(root && root.classList.contains("cut-theme-dark")));
+    tip.innerHTML = html;
+    tip.style.display = "block";
+    tip.style.visibility = "hidden";
+    const ar = anchor.getBoundingClientRect();
+    const tr = tip.getBoundingClientRect();
+    const margin = 8;
+    const vw = window.innerWidth;
+    let left = ar.left + ar.width / 2 - tr.width / 2;
+    left = Math.max(margin, Math.min(left, vw - tr.width - margin));
+    let top;
+    if (ar.top >= tr.height + 14) {
+      top = ar.top - tr.height - 8;
+      tip.classList.remove("cut-pop-below");
+    } else {
+      top = ar.bottom + 8;
+      tip.classList.add("cut-pop-below");
+    }
+    const arrowX = Math.max(10, Math.min(ar.left + ar.width / 2 - left, tr.width - 10));
+    tip.style.setProperty("--cut-arrow-x", arrowX + "px");
+    tip.style.left = left + "px";
+    tip.style.top = top + "px";
+    tip.style.visibility = "";
+  }
+
+  function hidePortalTip() {
+    if (portalTipEl) portalTipEl.style.display = "none";
+  }
+
+  function attachTip(el, getHtml) {
+    if (!el) return;
+    el.addEventListener("mouseenter", () => showPortalTip(el, getHtml()));
+    el.addEventListener("mouseleave", hidePortalTip);
+    el.addEventListener("focusin", () => showPortalTip(el, getHtml()));
+    el.addEventListener("focusout", hidePortalTip);
+  }
+
+  function attachTooltips(root) {
+    const srcHtml = (wrapSel, tipSel) => {
+      const w = root.querySelector(wrapSel);
+      if (!w) return;
+      attachTip(w, () => {
+        // Suppress while the share popover is open on this wrap.
+        if (w.classList.contains("cut-pop-open")) return "";
+        const t = w.querySelector(tipSel);
+        return t ? t.innerHTML : "";
+      });
+    };
+    srcHtml(".cut-logo-wrap", ".cut-tooltip");
+    srcHtml(".cut-rate-wrap", ".cut-rate-tooltip");
+    srcHtml('[data-cut="share-wrap"]', ".cut-share-tooltip");
+    srcHtml(".cut-collapse-wrap", ".cut-collapse-tooltip");
+    srcHtml(".cut-close-wrap", ".cut-close-tooltip");
+    root.querySelectorAll(".cut-cwrap").forEach((w) => {
+      attachTip(w, () => {
+        const t = w.querySelector(".cut-ctip");
+        return t ? t.innerHTML : "";
+      });
+    });
+    // Session / Weekly segments: dynamic "Resets in …" text kept fresh in a
+    // data attribute by renderSegment. Only shown when the inline
+    // "resets in …" meta is hidden by the narrow-width tiers (design/split
+    // mode) — no point in a tooltip repeating what's already visible.
+    root.querySelectorAll(".cut-seg").forEach((seg) => {
+      attachTip(seg, () => {
+        const meta = seg.querySelector("[data-cut-meta]");
+        if (meta && getComputedStyle(meta).display !== "none") return "";
+        return seg.dataset.cutTip || "";
+      });
+    });
+    // Any click inside the strip may change state/text — drop the tip.
+    root.addEventListener("click", hidePortalTip, true);
+    // Positions go stale on scroll/resize (bind once globally).
+    if (!attachTooltips._globalBound) {
+      attachTooltips._globalBound = true;
+      window.addEventListener("scroll", hidePortalTip, true);
+      window.addEventListener("resize", hidePortalTip);
+    }
   }
 
   function applyRateVisibility(root) {
@@ -366,6 +507,8 @@
 
   let sharePopOpen = false;
   let sharePopOutsideHandler = null;
+  let activeSharePop = null;   // the popover node while portaled to <body>
+  let activeShareWrap = null;  // its original parent, to restore on close
 
   function applyShareVisibility(root) {
     if (!root) return;
@@ -384,10 +527,46 @@
   function openSharePop(root) {
     const wrap = root.querySelector('[data-cut="share-wrap"]');
     const pop = root.querySelector('[data-cut="share-pop"]');
-    if (!wrap || !pop) return;
+    const btn = root.querySelector('[data-cut="share"]');
+    if (!wrap || !pop || !btn) return;
     sharePopOpen = true;
     wrap.classList.add("cut-pop-open");
+
+    // Portal the popover to <body>: the overlay is a size container
+    // (container-type creates layout containment) and the narrow-mode strip
+    // scrolls, both of which clip/trap absolutely-positioned children in
+    // small chat windows. A fixed-position node under <body> escapes both.
+    activeSharePop = pop;
+    activeShareWrap = wrap;
+    pop.classList.add("cut-share-pop-portal");
+    pop.classList.toggle("cut-pop-dark", root.classList.contains("cut-theme-dark"));
+    document.body.appendChild(pop);
     pop.style.display = "flex";
+    pop.style.position = "fixed";
+    pop.style.visibility = "hidden";
+
+    // Measure, then place above the button if there's room, else below.
+    const br = btn.getBoundingClientRect();
+    const pr = pop.getBoundingClientRect();
+    const margin = 8;
+    const vw = window.innerWidth;
+    let left = br.left + br.width / 2 - pr.width / 2;
+    left = Math.max(margin, Math.min(left, vw - pr.width - margin));
+    let top;
+    if (br.top >= pr.height + 14) {
+      top = br.top - pr.height - 10;
+      pop.classList.remove("cut-pop-below");
+    } else {
+      top = br.bottom + 10;
+      pop.classList.add("cut-pop-below");
+    }
+    // Keep the arrow pointing at the button even when clamped.
+    const arrowX = Math.max(12, Math.min(br.left + br.width / 2 - left, pr.width - 12));
+    pop.style.setProperty("--cut-arrow-x", arrowX + "px");
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+    pop.style.visibility = "";
+
     // Close when clicking anywhere outside the popover.
     sharePopOutsideHandler = (ev) => {
       if (!pop.contains(ev.target)) closeSharePop(root);
@@ -403,9 +582,27 @@
       document.removeEventListener("click", sharePopOutsideHandler, true);
       sharePopOutsideHandler = null;
     }
-    const wrap = root && root.querySelector('[data-cut="share-wrap"]');
-    const pop = root && root.querySelector('[data-cut="share-pop"]');
-    if (pop) pop.style.display = "none";
+    const pop = activeSharePop || (root && root.querySelector('[data-cut="share-pop"]'));
+    if (pop) {
+      pop.style.display = "none";
+      pop.style.position = "";
+      pop.style.left = "";
+      pop.style.top = "";
+      pop.style.visibility = "";
+      pop.classList.remove("cut-share-pop-portal", "cut-pop-dark", "cut-pop-below");
+      // Return the node to its original wrap so the strip's lifecycle
+      // (rebuilds, listeners) stays intact.
+      if (activeShareWrap && activeShareWrap.isConnected) {
+        activeShareWrap.appendChild(pop);
+      } else if (pop.parentNode === document.body) {
+        pop.remove();
+      }
+    }
+    activeSharePop = null;
+    const wrap = (activeShareWrap && activeShareWrap.isConnected)
+      ? activeShareWrap
+      : (root && root.querySelector('[data-cut="share-wrap"]'));
+    activeShareWrap = null;
     if (wrap) wrap.classList.remove("cut-pop-open");
     applyShareVisibility(root);
   }
@@ -447,6 +644,7 @@
       const p = data.percent;
       pctEl.textContent = `${p}%`;
       metaEl.textContent = data.resetsAt ? `resets in ${fmtReset(data.resetsAt)}` : "no reset info";
+      segEl.dataset.cutTip = data.resetsAt ? `Resets in ${fmtReset(data.resetsAt)}` : "No reset info";
       const cls = colorClass(p);
       dotEl.className = "cut-dot cut-color-" + cls;
       // Also tint the % number itself, and flag alert states:
@@ -459,8 +657,33 @@
       pctEl.textContent = "—";
       pctEl.className = "cut-pct";
       metaEl.textContent = "waiting…";
+      segEl.dataset.cutTip = "Waiting for data";
       dotEl.className = "cut-dot cut-color-neutral";
       segEl.classList.remove("cut-alert", "cut-alert-max");
+    }
+  }
+
+  function renderCompact(root) {
+    const items = [
+      { valSel: '[data-cut="c-session"]', tipSel: '[data-cut="c-session-tip"]', letter: "S", name: "Session", data: latestUsage && latestUsage.session },
+      { valSel: '[data-cut="c-weekly"]',  tipSel: '[data-cut="c-weekly-tip"]',  letter: "W", name: "Weekly",  data: latestUsage && latestUsage.weekly },
+    ];
+    for (const it of items) {
+      const el = root.querySelector(it.valSel);
+      const tipEl = root.querySelector(it.tipSel);
+      if (!el || !tipEl) continue;
+      if (it.data && it.data.percent != null) {
+        const p = it.data.percent;
+        el.textContent = `${p}%`;
+        el.className = "cut-cpct cut-color-" + colorClass(p);
+        tipEl.textContent = it.data.resetsAt
+          ? `Resets in ${fmtReset(it.data.resetsAt)}`
+          : "No reset info";
+      } else {
+        el.textContent = "—";
+        el.className = "cut-cpct";
+        tipEl.textContent = "Waiting for data";
+      }
     }
   }
 
@@ -468,6 +691,7 @@
     if (!root) return;
     renderSegment(root.querySelector('[data-cut="session"]'), latestUsage && latestUsage.session, "Session");
     renderSegment(root.querySelector('[data-cut="weekly"]'),  latestUsage && latestUsage.weekly,  weeklyLabel(latestUsage && latestUsage.weekly));
+    renderCompact(root);
     applyRateVisibility(root);
     applyDonateVisibility(root);
     if (!sharePopOpen) applyShareVisibility(root);
@@ -598,9 +822,10 @@
         latestMsgsRemaining = resp.usage.messagesRemaining;
       }
       try {
-        const { [RATE_KEY]: rv, [SHARE_KEY]: sv } = await chrome.storage.local.get([RATE_KEY, SHARE_KEY]);
+        const { [RATE_KEY]: rv, [SHARE_KEY]: sv, [COLLAPSE_KEY]: cv } = await chrome.storage.local.get([RATE_KEY, SHARE_KEY, COLLAPSE_KEY]);
         rated = !!rv;
         shared = !!sv;
+        collapsed = !!cv;
       } catch (_) {}
       ensureMounted();
     } catch (_) {}
@@ -623,6 +848,10 @@
       shared = !!changes[SHARE_KEY].newValue;
       const root = document.getElementById(OVERLAY_ID);
       if (root && !sharePopOpen) applyShareVisibility(root);
+    }
+    if (changes[COLLAPSE_KEY]) {
+      collapsed = !!changes[COLLAPSE_KEY].newValue;
+      applyCollapsed(document.getElementById(OVERLAY_ID));
     }
     if (changes[DONATE_KEY]) {
       const root = document.getElementById(OVERLAY_ID);
