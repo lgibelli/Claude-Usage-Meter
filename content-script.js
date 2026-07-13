@@ -10,6 +10,10 @@
 //   Both update on every renderInto() pass, so they stay live with the data.
 //   (c) The status dot (.cut-dot) is removed from both segments — the bar now
 //       carries the same color signal, in less horizontal space.
+//   (d) Collapsed view also shows each reset countdown inline: a 9px rotate
+//       icon + the short fmtReset() string (e.g. "4h 3m"), muted so the % keeps
+//       the visual lead. Hidden below the 330px container tier, where the
+//       tooltip still carries it.
 // - v1.1.5: fix blank strip during screen recording (e.g. Screen Studio).
 //   Chrome throttles / suspends the background service worker when macOS
 //   screen-capture APIs mark the window as "hidden". Two mitigations:
@@ -291,12 +295,12 @@
         </div>
         <div class="cut-compact" data-cut="compact">
           <span class="cut-cwrap">
-            <span class="cut-cval" tabindex="0"><span class="cut-cring"><svg class="cut-cring-svg" viewBox="0 0 24 24" aria-hidden="true"><circle class="cut-cring-track" cx="12" cy="12" r="10"></circle><circle class="cut-cring-fill" data-cut="ring-session" cx="12" cy="12" r="10"></circle></svg><span class="cut-clabel">S</span></span> <span class="cut-cpct" data-cut="c-session">—</span></span>
+            <span class="cut-cval" tabindex="0"><span class="cut-cring"><svg class="cut-cring-svg" viewBox="0 0 24 24" aria-hidden="true"><circle class="cut-cring-track" cx="12" cy="12" r="10"></circle><circle class="cut-cring-fill" data-cut="ring-session" cx="12" cy="12" r="10"></circle></svg><span class="cut-clabel">S</span></span> <span class="cut-cpct" data-cut="c-session">—</span><span class="cut-creset" data-cut="c-session-reset"><svg class="cut-creset-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 13.5a8.5 8.5 0 1 1-2.2-6.4"></path><polyline points="20.5 3 20.5 8 15.5 8"></polyline></svg><span class="cut-creset-txt" data-cut="c-session-rt">—</span></span></span>
             <span class="cut-ctip" data-cut="c-session-tip" aria-hidden="true">Waiting for data</span>
           </span>
           <span class="cut-cdivider" aria-hidden="true"></span>
           <span class="cut-cwrap">
-            <span class="cut-cval" tabindex="0"><span class="cut-cring"><svg class="cut-cring-svg" viewBox="0 0 24 24" aria-hidden="true"><circle class="cut-cring-track" cx="12" cy="12" r="10"></circle><circle class="cut-cring-fill" data-cut="ring-weekly" cx="12" cy="12" r="10"></circle></svg><span class="cut-clabel">W</span></span> <span class="cut-cpct" data-cut="c-weekly">—</span></span>
+            <span class="cut-cval" tabindex="0"><span class="cut-cring"><svg class="cut-cring-svg" viewBox="0 0 24 24" aria-hidden="true"><circle class="cut-cring-track" cx="12" cy="12" r="10"></circle><circle class="cut-cring-fill" data-cut="ring-weekly" cx="12" cy="12" r="10"></circle></svg><span class="cut-clabel">W</span></span> <span class="cut-cpct" data-cut="c-weekly">—</span><span class="cut-creset" data-cut="c-weekly-reset"><svg class="cut-creset-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 13.5a8.5 8.5 0 1 1-2.2-6.4"></path><polyline points="20.5 3 20.5 8 15.5 8"></polyline></svg><span class="cut-creset-txt" data-cut="c-weekly-rt">—</span></span></span>
             <span class="cut-ctip" data-cut="c-weekly-tip" aria-hidden="true">Waiting for data</span>
           </span>
         </div>
@@ -701,13 +705,15 @@
 
   function renderCompact(root) {
     const items = [
-      { valSel: '[data-cut="c-session"]', tipSel: '[data-cut="c-session-tip"]', ringSel: '[data-cut="ring-session"]', letter: "S", name: "Session", data: latestUsage && latestUsage.session },
-      { valSel: '[data-cut="c-weekly"]',  tipSel: '[data-cut="c-weekly-tip"]',  ringSel: '[data-cut="ring-weekly"]',  letter: "W", name: "Weekly",  data: latestUsage && latestUsage.weekly },
+      { key: "session", valSel: '[data-cut="c-session"]', tipSel: '[data-cut="c-session-tip"]', ringSel: '[data-cut="ring-session"]', letter: "S", name: "Session", data: latestUsage && latestUsage.session },
+      { key: "weekly",  valSel: '[data-cut="c-weekly"]',  tipSel: '[data-cut="c-weekly-tip"]',  ringSel: '[data-cut="ring-weekly"]',  letter: "W", name: "Weekly",  data: latestUsage && latestUsage.weekly },
     ];
     for (const it of items) {
       const el = root.querySelector(it.valSel);
       const tipEl = root.querySelector(it.tipSel);
       const ringEl = root.querySelector(it.ringSel);
+      const resetEl = root.querySelector(`[data-cut="c-${it.key}-reset"]`);
+      const rtEl    = root.querySelector(`[data-cut="c-${it.key}-rt"]`);
       if (!el || !tipEl) continue;
       if (it.data && it.data.percent != null) {
         const p = it.data.percent;
@@ -721,12 +727,22 @@
           ringEl.style.strokeDashoffset = (RING_C * (1 - frac)).toFixed(2);
           ringEl.setAttribute("class", "cut-cring-fill cut-color-" + cls);
         }
+        // v1.2.2: inline reset countdown (icon + short time) in the collapsed pill.
+        if (resetEl && rtEl) {
+          if (it.data.resetsAt) {
+            rtEl.textContent = fmtReset(it.data.resetsAt);
+            resetEl.style.display = "";
+          } else {
+            resetEl.style.display = "none";
+          }
+        }
         tipEl.textContent = it.data.resetsAt
           ? `${it.name} ${p}% · resets in ${fmtReset(it.data.resetsAt)}`
           : `${it.name} ${p}% · no reset info`;
       } else {
         el.textContent = "—";
         el.className = "cut-cpct";
+        if (resetEl) resetEl.style.display = "none";
         if (ringEl) {
           ringEl.style.strokeDasharray = RING_C.toFixed(2);
           ringEl.style.strokeDashoffset = RING_C.toFixed(2);
