@@ -120,6 +120,21 @@ const ORG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const CHROME_REVIEW_URL = "https://chromewebstore.google.com/detail/claude-usage-meter/kgpahkcgadpnklinijdojapiadnfelae/reviews";
 const EDGE_REVIEW_URL = "https://microsoftedge.microsoft.com/addons/detail/claude-usage-meter/anhdhmpfpgbohohjlbgnggnmcmkmmcbn";
 const RATE_KEY = "rate_us_clicked";
+// v1.2.3: when the rating happened. The strip's Share button waits 5 days from
+// this timestamp (see shareUnlocked() in content-script.js). Written with a
+// "first write wins" guard so a second Rate us path can't restart the clock.
+const RATE_AT_KEY = "rate_us_clicked_at";
+
+async function markRated() {
+  const patch = { [RATE_KEY]: true };
+  try {
+    const { [RATE_AT_KEY]: existing } = await chrome.storage.local.get(RATE_AT_KEY);
+    if (!existing) patch[RATE_AT_KEY] = Date.now();
+  } catch (_) {
+    patch[RATE_AT_KEY] = Date.now();
+  }
+  await chrome.storage.local.set(patch);
+}
 
 // Edge ships a Chromium engine, so feature checks won't distinguish it from
 // Chrome — sniff the UA instead. Prefer the structured userAgentData brands
@@ -688,7 +703,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "open-review") {
     (async () => {
       try {
-        await chrome.storage.local.set({ [RATE_KEY]: true });
+        await markRated();
         await chrome.tabs.create({ url: getReviewUrl() });
       } catch (_) {}
       sendResponse && sendResponse({ ok: true });

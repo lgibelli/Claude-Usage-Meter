@@ -3,6 +3,7 @@
 const CHROME_REVIEW_URL = "https://chromewebstore.google.com/detail/claude-usage-meter/kgpahkcgadpnklinijdojapiadnfelae/reviews";
 const EDGE_REVIEW_URL = "https://microsoftedge.microsoft.com/addons/detail/claude-usage-meter/anhdhmpfpgbohohjlbgnggnmcmkmmcbn";
 const RATE_KEY = "rate_us_clicked";
+const RATE_AT_KEY = "rate_us_clicked_at";  // v1.2.3: starts the 5-day Share delay
 const DONATE_KEY = "donate_clicked_at";
 
 // Edge is Chromium under the hood, so sniff the UA to route the review link.
@@ -305,7 +306,10 @@ document.getElementById("rate-btn").addEventListener("click", async () => {
   const btn = document.getElementById("rate-btn");
   if (btn) btn.classList.add("hidden");
   try {
-    await chrome.storage.local.set({ [RATE_KEY]: true });
+    const patch = { [RATE_KEY]: true };
+    const { [RATE_AT_KEY]: existing } = await chrome.storage.local.get(RATE_AT_KEY);
+    if (!existing) patch[RATE_AT_KEY] = Date.now();   // don't restart the clock
+    await chrome.storage.local.set(patch);
     await chrome.tabs.create({ url: getReviewUrl() });
   } catch (_) {}
   window.close();

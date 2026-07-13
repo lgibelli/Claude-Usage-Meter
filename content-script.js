@@ -1,4 +1,9 @@
-// content-script.js (isolated world, v1.9)
+// content-script.js (isolated world, v1.10)
+// - v1.2.3: the Share button no longer appears the moment someone taps Rate us.
+//   It now waits SHARE_DELAY (5 days) from the rating timestamp, so the user
+//   isn't hit with a second ask straight after doing the first one. The gate is
+//   shareUnlocked(); it's re-evaluated on every render, so the button appears on
+//   its own once the window passes — no reload needed.
 // - v1.2.2: usage progress indicators.
 //   (a) Expanded view: a 2px bar under each "Session" / "Weekly" label whose
 //       width tracks the live percentage, color-coded green/amber/orange/red
@@ -164,6 +169,12 @@
   const OVERLAY_ID = "claude-usage-overlay";
   const DISMISS_KEY = "overlay_dismissed_until";
   const RATE_KEY = "rate_us_clicked";
+  // v1.2.3: timestamp of the Rate us click. The Share button used to appear the
+  // instant someone rated, which reads as "thanks — now do one more thing for
+  // me". It now waits SHARE_DELAY after the rating so the two asks are spaced
+  // out and the strip stays quiet in between.
+  const RATE_AT_KEY = "rate_us_clicked_at";
+  const SHARE_DELAY = 5 * 24 * 60 * 60 * 1000; // 5 days in milliseconds
   const DONATE_KEY = "donate_clicked_at";
   const DONATE_LINK = "https://buymeacoffee.com/selectorshub";
   const DONATE_COOLDOWN = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
@@ -181,6 +192,7 @@
     return CHROME_REVIEW_URL;
   }
   let rated = false;
+  let ratedAt = 0;       // ms epoch of the Rate us click (0 = unknown)
   let donateVisible = true;
   let shared = false;
   let collapsed = false;
@@ -197,6 +209,14 @@
       : "Collapse the strip to a compact view (S = session, W = weekly). Click again anytime to expand.";
   }
   const SHARE_KEY = "share_clicked";
+
+  // Share is offered only once the 5-day cooldown after rating has elapsed.
+  // ratedAt === 0 while rated is true can only happen for someone who rated on
+  // an older build; loadState() backfills it, so treat it as "not yet due".
+  function shareUnlocked() {
+    if (!rated || !ratedAt) return false;
+    return Date.now() - ratedAt >= SHARE_DELAY;
+  }
   const CHROME_STORE_URL = "https://chromewebstore.google.com/detail/kgpahkcgadpnklinijdojapiadnfelae?utm_source=item-share-cb";
   const EDGE_STORE_URL = "https://microsoftedge.microsoft.com/addons/detail/claude-usage-meter/anhdhmpfpgbohohjlbgnggnmcmkmmcbn";
   function storeUrl() {
@@ -351,14 +371,16 @@
       rateBtn.addEventListener("click", (e) => {
         e.preventDefault(); e.stopPropagation();
         rated = true;
+        ratedAt = Date.now();
         applyRateVisibility(root);
         // Rate us is gone now — the Support button takes its place.
         applyDonateVisibility(root);
-        // The Share button appears once the user has rated.
+        // Share stays hidden here: shareUnlocked() is false until SHARE_DELAY
+        // has passed. This call just keeps the wrap in a consistent state.
         applyShareVisibility(root);
         // Persist the flag directly so the button never returns, even if the
         // background message below fails and we take the fallback path.
-        try { chrome.storage.local.set({ [RATE_KEY]: true }); } catch (_) {}
+        try { chrome.storage.local.set({ [RATE_KEY]: true, [RATE_AT_KEY]: ratedAt }); } catch (_) {}
         // Background opens the review tab (and also persists the flag) so the
         // button never shows again (in the strip or the popup).
         try {
@@ -534,10 +556,10 @@
     const sw = root.querySelector('[data-cut="share-wrap"]');
     const sd = root.querySelector('[data-cut="share-divider"]');
     if (!sw || !sd) return;
-    // Visible only after the user has rated and before they've shared.
-    // While the network popover is open, keep the wrap visible so the
-    // popover stays anchored, even though the shared flag is already set.
-    const show = (rated && !shared) || sharePopOpen;
+    // Visible only once the post-rating cooldown has elapsed, and before they
+    // have shared. While the network popover is open, keep the wrap visible so
+    // the popover stays anchored, even though the shared flag is already set.
+    const show = (shareUnlocked() && !shared) || sharePopOpen;
     const display = show ? "" : "none";
     sw.style.display = display;
     sd.style.display = display;
@@ -888,10 +910,18 @@
         latestMsgsRemaining = resp.usage.messagesRemaining;
       }
       try {
-        const { [RATE_KEY]: rv, [SHARE_KEY]: sv, [COLLAPSE_KEY]: cv } = await chrome.storage.local.get([RATE_KEY, SHARE_KEY, COLLAPSE_KEY]);
+        const { [RATE_KEY]: rv, [RATE_AT_KEY]: rav, [SHARE_KEY]: sv, [COLLAPSE_KEY]: cv } =
+          await chrome.storage.local.get([RATE_KEY, RATE_AT_KEY, SHARE_KEY, COLLAPSE_KEY]);
         rated = !!rv;
+        ratedAt = Number(rav) || 0;
         shared = !!sv;
         collapsed = !!cv;
+        // Someone who rated on <= v1.2.2 has no timestamp. Start their clock now
+        // rather than showing Share immediately — the whole point is the pause.
+        if (rated && !ratedAt) {
+          ratedAt = Date.now();
+          try { chrome.storage.local.set({ [RATE_AT_KEY]: ratedAt }); } catch (_) {}
+        }
       } catch (_) {}
       ensureMounted();
     } catch (_) {}
@@ -900,6 +930,11 @@
   // React to live changes of the "rate us" marker from elsewhere.
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
+    if (changes[RATE_AT_KEY]) {
+      ratedAt = Number(changes[RATE_AT_KEY].newValue) || 0;
+      const root = document.getElementById(OVERLAY_ID);
+      if (root && !sharePopOpen) applyShareVisibility(root);
+    }
     if (changes[RATE_KEY]) {
       rated = !!changes[RATE_KEY].newValue;
       const root = document.getElementById(OVERLAY_ID);
