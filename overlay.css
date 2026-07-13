@@ -198,26 +198,11 @@
   flex-shrink: 0;
 }
 
-#claude-usage-overlay .cut-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.4;
-  flex-shrink: 0;
-}
-
-#claude-usage-overlay .cut-dot.cut-color-green   { background: #10b981; opacity: 0.95; box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.16); }
-#claude-usage-overlay .cut-dot.cut-color-amber   { background: #f59e0b; opacity: 1;    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.18); }
-#claude-usage-overlay .cut-dot.cut-color-orange  { background: #f97316; opacity: 1;    box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.20); }
-#claude-usage-overlay .cut-dot.cut-color-red     { background: #ef4444; opacity: 1;    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.22); }
-#claude-usage-overlay .cut-dot.cut-color-neutral { background: currentColor; opacity: 0.35; }
-
 #claude-usage-overlay .cut-label {
   text-transform: uppercase;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  opacity: 0.7;
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  opacity: 0.62;
 }
 
 #claude-usage-overlay .cut-pct {
@@ -249,9 +234,6 @@
   animation: cut-alert-pulse 1.4s ease-in-out infinite;
 }
 #claude-usage-overlay .cut-seg.cut-alert-max .cut-pct { color: #ef4444; }
-#claude-usage-overlay .cut-seg.cut-alert-max .cut-dot {
-  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.30);
-}
 
 @keyframes cut-alert-pulse {
   0%, 100% {
@@ -636,8 +618,8 @@
   }
   #claude-usage-overlay .cut-strip::-webkit-scrollbar { display: none; }
   #claude-usage-overlay .cut-label {
-    font-size: 9px;
-    letter-spacing: 0.05em;
+    font-size: 8px;
+    letter-spacing: 0.04em;
   }
   #claude-usage-overlay .cut-pct { font-size: 11px; }
   #claude-usage-overlay .cut-tooltip,
@@ -913,4 +895,139 @@
 .cut-portal-tip.cut-pop-dark.cut-pop-below::after {
   border-top-color: transparent;
   border-bottom-color: #f5f3ef;
+}
+
+/* ===========================================================================
+   v1.2.2 — usage progress indicators
+   (a) expanded: thin linear bar under the Session / Weekly label
+   (b) collapsed: circular ring around the S / W letter
+   Both are driven from content-script.js (renderSegment / renderCompact) and
+   share the colorClass() thresholds: green <50, amber 50-74, orange 75-89,
+   red >=90.
+   =========================================================================== */
+
+/* --- (a) linear bar under the label ------------------------------------- */
+
+/* The label gets a positioning context. The bar is absolutely positioned, so
+   it adds ZERO height to the strip and can't shift the flex row. */
+#claude-usage-overlay .cut-lwrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+#claude-usage-overlay .cut-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 1px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 20%, transparent);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+#claude-usage-overlay .cut-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.35;
+  transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.25s ease;
+}
+
+#claude-usage-overlay .cut-bar-fill.cut-color-green  { background: #10b981; opacity: 0.95; }
+#claude-usage-overlay .cut-bar-fill.cut-color-amber  { background: #f59e0b; opacity: 1; }
+#claude-usage-overlay .cut-bar-fill.cut-color-orange { background: #f97316; opacity: 1; }
+#claude-usage-overlay .cut-bar-fill.cut-color-red    { background: #ef4444; opacity: 1; }
+
+/* At 100% the bar joins the segment's pulse instead of sitting flat. */
+#claude-usage-overlay .cut-seg.cut-alert-max .cut-bar-fill { background: #ef4444; }
+
+/* --- (b) circular ring around S / W (collapsed view) --------------------- */
+
+#claude-usage-overlay .cut-cring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 16px keeps the collapsed strip exactly the same height as the expanded
+     one (the 12px % text already sets an 18px line box) — a taller ring would
+     make the strip grow by ~2px on every collapse. */
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+#claude-usage-overlay .cut-cring-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);   /* start the arc at 12 o'clock */
+  overflow: visible;
+}
+
+/* v1.2.2: 1.5 viewBox units over a 16px box (24 -> 16 = x0.667) renders as a
+   ~1px stroke — the same hairline weight as .cut-bar in the expanded view. */
+#claude-usage-overlay .cut-cring-track {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  opacity: 0.2;
+}
+
+#claude-usage-overlay .cut-cring-fill {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  opacity: 0.35;
+  stroke-dasharray: 62.83;
+  stroke-dashoffset: 62.83;    /* empty until JS supplies a percentage */
+  transition: stroke-dashoffset 0.45s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.25s ease;
+}
+
+#claude-usage-overlay .cut-cring-fill.cut-color-green  { stroke: #10b981; opacity: 1; }
+#claude-usage-overlay .cut-cring-fill.cut-color-amber  { stroke: #f59e0b; opacity: 1; }
+#claude-usage-overlay .cut-cring-fill.cut-color-orange { stroke: #f97316; opacity: 1; }
+#claude-usage-overlay .cut-cring-fill.cut-color-red    { stroke: #ef4444; opacity: 1; }
+
+/* The letter now sits INSIDE the ring, so it shrinks to fit. */
+#claude-usage-overlay .cut-cring .cut-clabel {
+  position: relative;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  opacity: 0.75;
+}
+
+/* ring + % need center alignment, not baseline */
+#claude-usage-overlay .cut-cval {
+  align-items: center;
+  gap: 5px;
+}
+
+/* Red ring at >= 90% gets a soft halo, mirroring the expanded alert wash. */
+#claude-usage-overlay .cut-cring:has(.cut-cring-fill.cut-color-red) {
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.14);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #claude-usage-overlay .cut-bar-fill,
+  #claude-usage-overlay .cut-cring-fill {
+    transition: none;
+  }
+}
+
+/* Ultra-compact tier: shave the ring so the collapsed pill stays tiny. */
+@container cut-overlay (max-width: 330px) {
+  #claude-usage-overlay .cut-cring { width: 15px; height: 15px; }
+  #claude-usage-overlay .cut-cring .cut-clabel { font-size: 8.5px; }
+  #claude-usage-overlay .cut-bar { bottom: -3px; height: 1px; }
 }

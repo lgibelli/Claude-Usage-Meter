@@ -1,4 +1,15 @@
-// content-script.js (isolated world, v1.8)
+// content-script.js (isolated world, v1.9)
+// - v1.2.2: usage progress indicators.
+//   (a) Expanded view: a 2px bar under each "Session" / "Weekly" label whose
+//       width tracks the live percentage, color-coded green/amber/orange/red
+//       by the same colorClass() thresholds as the dot and the % number. The
+//       bar is absolutely positioned inside .cut-lwrap so it adds no height
+//       to the strip and never shifts the flex layout.
+//   (b) Collapsed view: an SVG ring around each S / W letter, driven by
+//       stroke-dashoffset, with the same color coding.
+//   Both update on every renderInto() pass, so they stay live with the data.
+//   (c) The status dot (.cut-dot) is removed from both segments — the bar now
+//       carries the same color signal, in less horizontal space.
 // - v1.1.5: fix blank strip during screen recording (e.g. Screen Studio).
 //   Chrome throttles / suspends the background service worker when macOS
 //   screen-capture APIs mark the window as "hidden". Two mitigations:
@@ -260,28 +271,32 @@
         </span>
         <div class="cut-divider"></div>
         <div class="cut-seg" data-cut="session">
-          <span class="cut-dot cut-color-neutral" data-cut-dot></span>
-          <span class="cut-label" data-cut-label>Session</span>
+          <span class="cut-lwrap">
+            <span class="cut-label" data-cut-label>Session</span>
+            <span class="cut-bar" data-cut-bar aria-hidden="true"><span class="cut-bar-fill" data-cut-bar-fill style="width:0%"></span></span>
+          </span>
           <span class="cut-pct" data-cut-pct>—</span>
           <span class="cut-sep">·</span>
           <span class="cut-meta" data-cut-meta>waiting…</span>
         </div>
         <div class="cut-divider"></div>
         <div class="cut-seg" data-cut="weekly">
-          <span class="cut-dot cut-color-neutral" data-cut-dot></span>
-          <span class="cut-label" data-cut-label>Weekly</span>
+          <span class="cut-lwrap">
+            <span class="cut-label" data-cut-label>Weekly</span>
+            <span class="cut-bar" data-cut-bar aria-hidden="true"><span class="cut-bar-fill" data-cut-bar-fill style="width:0%"></span></span>
+          </span>
           <span class="cut-pct" data-cut-pct>—</span>
           <span class="cut-sep">·</span>
           <span class="cut-meta" data-cut-meta>—</span>
         </div>
         <div class="cut-compact" data-cut="compact">
           <span class="cut-cwrap">
-            <span class="cut-cval" tabindex="0"><span class="cut-clabel">S</span> <span class="cut-cpct" data-cut="c-session">—</span></span>
+            <span class="cut-cval" tabindex="0"><span class="cut-cring"><svg class="cut-cring-svg" viewBox="0 0 24 24" aria-hidden="true"><circle class="cut-cring-track" cx="12" cy="12" r="10"></circle><circle class="cut-cring-fill" data-cut="ring-session" cx="12" cy="12" r="10"></circle></svg><span class="cut-clabel">S</span></span> <span class="cut-cpct" data-cut="c-session">—</span></span>
             <span class="cut-ctip" data-cut="c-session-tip" aria-hidden="true">Waiting for data</span>
           </span>
           <span class="cut-cdivider" aria-hidden="true"></span>
           <span class="cut-cwrap">
-            <span class="cut-cval" tabindex="0"><span class="cut-clabel">W</span> <span class="cut-cpct" data-cut="c-weekly">—</span></span>
+            <span class="cut-cval" tabindex="0"><span class="cut-cring"><svg class="cut-cring-svg" viewBox="0 0 24 24" aria-hidden="true"><circle class="cut-cring-track" cx="12" cy="12" r="10"></circle><circle class="cut-cring-fill" data-cut="ring-weekly" cx="12" cy="12" r="10"></circle></svg><span class="cut-clabel">W</span></span> <span class="cut-cpct" data-cut="c-weekly">—</span></span>
             <span class="cut-ctip" data-cut="c-weekly-tip" aria-hidden="true">Waiting for data</span>
           </span>
         </div>
@@ -633,12 +648,24 @@
     donateVisible = !shouldHide;
   }
 
+  // v1.2.2: percent -> 0-100 clamp shared by both progress indicators.
+  // NOTE: `percent` is already an integer 0-100 (see the pickPct() contract in
+  // background.js — `utilization: 1` means 1%, never 100%). Do NOT rescale.
+  function clampPct(p) {
+    if (p == null || isNaN(p)) return 0;
+    return Math.max(0, Math.min(100, Number(p)));
+  }
+
+  // Circumference of the compact ring (r = 10 in a 24x24 viewBox).
+  const RING_C = 2 * Math.PI * 10;
+
   function renderSegment(segEl, data, labelOverride) {
     if (!segEl) return;
-    const dotEl   = segEl.querySelector('[data-cut-dot]');
     const labelEl = segEl.querySelector('[data-cut-label]');
     const pctEl   = segEl.querySelector('[data-cut-pct]');
     const metaEl  = segEl.querySelector('[data-cut-meta]');
+    const barEl   = segEl.querySelector('[data-cut-bar]');
+    const fillEl  = segEl.querySelector('[data-cut-bar-fill]');
     if (labelOverride) labelEl.textContent = labelOverride;
     if (data && data.percent != null) {
       const p = data.percent;
@@ -646,11 +673,16 @@
       metaEl.textContent = data.resetsAt ? `resets in ${fmtReset(data.resetsAt)}` : "no reset info";
       segEl.dataset.cutTip = data.resetsAt ? `Resets in ${fmtReset(data.resetsAt)}` : "No reset info";
       const cls = colorClass(p);
-      dotEl.className = "cut-dot cut-color-" + cls;
       // Also tint the % number itself, and flag alert states:
       //   >= 90%  → red text ("cut-alert")
       //   = 100%  → red text + pulsing "maxed out" emphasis ("cut-alert-max")
       pctEl.className = "cut-pct cut-color-" + cls;
+      // v1.2.2: thin usage bar under the label, same color coding as the dot/%.
+      if (fillEl && barEl) {
+        fillEl.style.width = clampPct(p) + "%";
+        fillEl.className = "cut-bar-fill cut-color-" + cls;
+        barEl.classList.remove("cut-bar-empty");
+      }
       segEl.classList.toggle("cut-alert", p >= 90);
       segEl.classList.toggle("cut-alert-max", p >= 100);
     } else {
@@ -658,30 +690,48 @@
       pctEl.className = "cut-pct";
       metaEl.textContent = "waiting…";
       segEl.dataset.cutTip = "Waiting for data";
-      dotEl.className = "cut-dot cut-color-neutral";
+      if (fillEl && barEl) {
+        fillEl.style.width = "0%";
+        fillEl.className = "cut-bar-fill";
+        barEl.classList.add("cut-bar-empty");
+      }
       segEl.classList.remove("cut-alert", "cut-alert-max");
     }
   }
 
   function renderCompact(root) {
     const items = [
-      { valSel: '[data-cut="c-session"]', tipSel: '[data-cut="c-session-tip"]', letter: "S", name: "Session", data: latestUsage && latestUsage.session },
-      { valSel: '[data-cut="c-weekly"]',  tipSel: '[data-cut="c-weekly-tip"]',  letter: "W", name: "Weekly",  data: latestUsage && latestUsage.weekly },
+      { valSel: '[data-cut="c-session"]', tipSel: '[data-cut="c-session-tip"]', ringSel: '[data-cut="ring-session"]', letter: "S", name: "Session", data: latestUsage && latestUsage.session },
+      { valSel: '[data-cut="c-weekly"]',  tipSel: '[data-cut="c-weekly-tip"]',  ringSel: '[data-cut="ring-weekly"]',  letter: "W", name: "Weekly",  data: latestUsage && latestUsage.weekly },
     ];
     for (const it of items) {
       const el = root.querySelector(it.valSel);
       const tipEl = root.querySelector(it.tipSel);
+      const ringEl = root.querySelector(it.ringSel);
       if (!el || !tipEl) continue;
       if (it.data && it.data.percent != null) {
         const p = it.data.percent;
+        const cls = colorClass(p);
         el.textContent = `${p}%`;
-        el.className = "cut-cpct cut-color-" + colorClass(p);
+        el.className = "cut-cpct cut-color-" + cls;
+        // v1.2.2: circular progress around the S / W letter, same color coding.
+        if (ringEl) {
+          const frac = clampPct(p) / 100;
+          ringEl.style.strokeDasharray = RING_C.toFixed(2);
+          ringEl.style.strokeDashoffset = (RING_C * (1 - frac)).toFixed(2);
+          ringEl.setAttribute("class", "cut-cring-fill cut-color-" + cls);
+        }
         tipEl.textContent = it.data.resetsAt
-          ? `Resets in ${fmtReset(it.data.resetsAt)}`
-          : "No reset info";
+          ? `${it.name} ${p}% · resets in ${fmtReset(it.data.resetsAt)}`
+          : `${it.name} ${p}% · no reset info`;
       } else {
         el.textContent = "—";
         el.className = "cut-cpct";
+        if (ringEl) {
+          ringEl.style.strokeDasharray = RING_C.toFixed(2);
+          ringEl.style.strokeDashoffset = RING_C.toFixed(2);
+          ringEl.setAttribute("class", "cut-cring-fill");
+        }
         tipEl.textContent = "Waiting for data";
       }
     }
