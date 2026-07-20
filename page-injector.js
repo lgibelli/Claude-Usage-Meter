@@ -2,6 +2,15 @@
 // Patches window.fetch so we can tee SSE response streams from Claude.ai's
 // chat completion endpoints and read the `message_limit` event without
 // disturbing the page's own consumption of the stream.
+//
+// v1.2.6: fix the strip sticking below 100% after a real lockout. When the cap
+//   is hit, the completion request returns an HTTP 429 (or 403) with a JSON
+//   error body — not an SSE stream — so the SSE scanner never saw it and no
+//   "reached" signal fired, leaving the strip at the polled ~98% utilization.
+//   We now treat that error status as the authoritative lockout: read a clone
+//   of the body (page keeps the original), pull a reset time from the body or
+//   the Retry-After header, and emit reached=true so the session pins to 100%.
+//   Also broadened the SSE "reached" hints (rate_limit / usage_limit / too_many).
 
 (function () {
   if (window.__claudeUsageMeterInjected) return;
@@ -74,7 +83,13 @@
   // by the /usage poll — which can still read ~0% for the fresh window at the
   // moment the cap is hit. Field names vary, so scan loosely for a status/type
   // string like "reached"/"exceeded"/"exhausted" or a truthy *_reached flag.
-  const REACHED_HINTS = ["reached", "exceeded", "exhausted", "limit_hit", "out_of_messages"];
+  const REACHED_HINTS = [
+    "reached", "exceeded", "exhausted", "limit_hit", "out_of_messages",
+    // v1.2.6: Claude's lockout error bodies phrase it differently depending on
+    // plan/endpoint — free-tier session lockouts commonly surface as a
+    // rate_limit_error / usage_limit_reached rather than the words above.
+    "rate_limit", "usage_limit", "too_many"
+  ];
   function detectReached(obj, depth = 0) {
     if (!obj || typeof obj !== "object" || depth > 6) return false;
     for (const k of Object.keys(obj)) {
@@ -151,6 +166,48 @@
     try {
       const url = typeof input === "string" ? input : (input && input.url) || "";
       if (!isCompletionUrl(url)) return response;
+
+      // v1.2.6: hard-lockout via HTTP status. When the session/weekly cap is
+      // hit, the completion request comes back as an ERROR (429 Too Many
+      // Requests, occasionally 403) carrying a JSON body — NOT an SSE stream.
+      // The scanner below only understands SSE, so this response would slip
+      // through, and the polled /usage utilization can sit at ~98% at this exact
+      // moment — which is why the strip could stick below 100% after a real
+      // lockout. Treat this status as the authoritative "maxed out" signal.
+      // We read a *clone* so the page still consumes the untouched original.
+      if (response.status === 429 || response.status === 403) {
+        try {
+          const text = await response.clone().text();
+          let parsed = null;
+          try { parsed = JSON.parse(text); } catch (_) {}
+          // 429 is unconditionally rate/limit related. Only treat 403 as a
+          // lockout when the body actually references a limit, so we don't
+          // misread generic auth/permission errors as "you're maxed out".
+          const limitish = response.status === 429 ||
+            /limit|exceed|exhaust|quota|too\s*many/i.test(text || "");
+          if (limitish) {
+            // Reset time: prefer an explicit timestamp in the body; otherwise
+            // fall back to the standard Retry-After header (seconds from now).
+            let resetsAt = (parsed && findResetAt(parsed)) || null;
+            if (!resetsAt) {
+              const ra = response.headers && response.headers.get("retry-after");
+              const secs = ra != null ? parseInt(ra, 10) : NaN;
+              if (!isNaN(secs) && secs > 0) {
+                resetsAt = new Date(Date.now() + secs * 1000).toISOString();
+              }
+            }
+            postToContent({
+              kind: "message_limit",
+              remaining: 0,
+              resetsAt: resetsAt || null,
+              reached: true,
+              ts: Date.now()
+            });
+          }
+        } catch (_) { /* body not readable — ignore, page is unaffected */ }
+        return response;
+      }
+
       if (!response.body) return response;
 
       // Tee the body so the page gets one branch and we scan the other.

@@ -1,4 +1,34 @@
-// content-script.js (isolated world, v1.10)
+// content-script.js (isolated world, v1.14)
+// - v1.2.10: expanded "Session" / "Weekly" labels now match the % size (12px;
+//   11px in the compact tier) and render in title case instead of small caps.
+//   With the bar gone the 8.5px eyebrow looked undersized; at value size,
+//   title case pairs better and stays compact. The % keeps the lead via its
+//   heavier weight + color, and the label stays slightly muted (opacity).
+// - v1.2.9: removed the linear usage bar from the EXPANDED view. In expanded
+//   mode the exact "98%" (already color-coded) made the bar a redundant, less
+//   precise echo of the same value, and it added visual noise next to the now
+//   color-aware reset time. The collapsed-pill ring stays — there the number is
+//   tiny, so the ring is the primary at-a-glance signal. The .cut-lwrap wrapper
+//   (which only existed to position the bar) and all .cut-bar* CSS are gone.
+// - v1.2.8: fix lockout detection actually catching Claude's banner. v1.2.7
+//   keyed the scan off class names / ARIA roles, but Claude renders the banner
+//   with hashed utility classes that matched none of them — so it never looked
+//   at the right node and the strip stayed at the polled ~98%. Now the scan
+//   matches purely on the *text* of small leaf nodes (any tag/class) and only
+//   runs when usage is already >= 90% (SCAN_GATE_PCT), so it's free during
+//   normal browsing. Still guarded: short text + limit-language + a reset-time
+//   or upgrade CTA before it pins the session to 100%.
+// - v1.2.7: first (class/role-based) attempt at reading Claude's on-page
+//   "usage limit reached" banner to reach 100% when the poll plateaus.
+// - v1.2.5: reset time is alert-only color, not a full status echo. The %
+//   (with its bar/ring) stays the single status signal; the reset time is
+//   neutral reference text ("when do I get more?") that only turns red in the
+//   alert band (>= 90%) — via resetAlertClass() — so the strip stays calm
+//   day-to-day and the color still means something when it appears.
+//   (a) Expanded meta reads "Reset in <time>" (capital R, singular); the
+//       "<time>" span goes red only at >= 90%.
+//   (b) Collapsed pill reset countdown: muted by default, full-strength red
+//       at >= 90%. Tooltips use "Reset in …" wording.
 // - v1.2.3: the Share button no longer appears the moment someone taps Rate us.
 //   It now waits SHARE_DELAY (5 days) from the rating timestamp, so the user
 //   isn't hit with a second ask straight after doing the first one. The gate is
@@ -72,6 +102,100 @@
     if (!m || m.full === lastReportedModelFull) return;
     lastReportedModelFull = m.full;
     try { chrome.runtime.sendMessage({ type: "set-active-model", model: m }); } catch (_) {}
+  }
+
+  // ===== lockout banner detection (DOM) =====
+  // v1.2.8: the robust "you're maxed out" signal. The /usage poll's utilization
+  // plateaus just under 100% (e.g. 98%) at the moment the cap is hit, and when
+  // the user is *already* locked out no new /completion request fires for the
+  // network patch to catch — so the strip could stick at the last polled value.
+  // Claude itself shows a persistent "usage limit reached" message in the page
+  // (the same thing the user sees); detecting it here — we already have full DOM
+  // access — pins the session to 100% reliably, independent of any poll/stream.
+  //
+  // v1.2.8 rewrite: the previous pass keyed off class names / roles, but Claude
+  // renders the banner with hashed utility classes that matched none of them, so
+  // the scan never inspected the right node. We now match purely on the *text*
+  // of small leaf-ish nodes, regardless of tag or class. To keep that cheap we
+  // only run the scan when usage is already near the cap (>= SCAN_GATE_PCT) —
+  // i.e. exactly the situation where a lockout is possible — so normal browsing
+  // pays nothing. Guarded against false positives from ordinary chat: text must
+  // be short AND contain limit-language AND a reset-time or upgrade CTA.
+  const SCAN_GATE_PCT = 90;
+  const LIMIT_RE   = /\b(?:usage|message|daily|free|weekly)\s*(?:limit|cap)\b|\blimit reached\b|\breached (?:your|the)\b[^.]*\blimit\b|\bout of (?:free )?messages\b|\brun out of\b/i;
+  const RESETISH_RE = /\breset[s]?\b|\bresets? (?:at|in)\b|\btry again\b|\bavailable again\b|\bcomes? back\b|\buntil\b/i;
+  const UPGRADE_RE  = /\bupgrade\b|\bsubscribe\b|\bget (?:claude )?pro\b|\bcontinue with (?:claude )?pro\b/i;
+
+  function parseResetFromText(text) {
+    // "resets at 3:00 PM" / "reset at 15:00" → next occurrence of that clock time.
+    let m = text.match(/reset[s]?\b[^0-9]{0,12}(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+    if (m) {
+      let h = parseInt(m[1], 10);
+      const min = m[2] ? parseInt(m[2], 10) : 0;
+      const ap = m[3] ? m[3].toLowerCase() : null;
+      if (ap === "pm" && h < 12) h += 12;
+      if (ap === "am" && h === 12) h = 0;
+      if (h >= 0 && h <= 23 && min >= 0 && min <= 59) {
+        const d = new Date();
+        d.setHours(h, min, 0, 0);
+        if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1);
+        return d.getTime();
+      }
+    }
+    // "resets in 2 hours 30 minutes" / "in 45 minutes".
+    m = text.match(/\bin\s+(?:(\d+)\s*h(?:ours?|rs?)?)?\s*(?:(\d+)\s*m(?:in(?:utes?)?)?)?/i);
+    if (m && (m[1] || m[2])) {
+      const hrs = m[1] ? parseInt(m[1], 10) : 0;
+      const mins = m[2] ? parseInt(m[2], 10) : 0;
+      if (hrs || mins) return Date.now() + (hrs * 60 + mins) * 60000;
+    }
+    return null;
+  }
+
+  function nearCap() {
+    const s = latestUsage && latestUsage.session && latestUsage.session.percent;
+    const w = latestUsage && latestUsage.weekly && latestUsage.weekly.percent;
+    return (typeof s === "number" && s >= SCAN_GATE_PCT) ||
+           (typeof w === "number" && w >= SCAN_GATE_PCT);
+  }
+
+  let lastLockoutSent = 0;
+  function scanLockoutBanner() {
+    // Only scan when we're already near the cap — bounds the cost to the rare
+    // moments a lockout can actually happen.
+    if (!nearCap()) return false;
+    const nodes = document.body
+      ? document.body.querySelectorAll("div, span, p, section, aside, li, button, a")
+      : [];
+    for (const el of nodes) {
+      // Leaf-ish only: banners are small, so skip big containers (their
+      // textContent would sweep in unrelated page text).
+      if (el.childElementCount > 3) continue;
+      // Never match our own overlay strip.
+      if (el.closest && el.closest("#claude-usage-overlay")) continue;
+      const text = (el.textContent || "").trim();
+      if (text.length < 8 || text.length > 200) continue;
+      if (!LIMIT_RE.test(text)) continue;
+      if (!(RESETISH_RE.test(text) || UPGRADE_RE.test(text))) continue;
+      const now = Date.now();
+      if (now - lastLockoutSent < 30000) return true;     // throttle re-sends
+      lastLockoutSent = now;
+      const resetMs = parseResetFromText(text);
+      try {
+        chrome.runtime.sendMessage({
+          type: "sse-message-limit",
+          payload: {
+            kind: "message_limit",
+            remaining: 0,
+            reached: true,
+            resetsAt: resetMs ? new Date(resetMs).toISOString() : null,
+            ts: now
+          }
+        });
+      } catch (_) {}
+      return true;
+    }
+    return false;
   }
 
   // ===== Claude page theme detection =====
@@ -272,6 +396,13 @@
     if (p >= 50) return "amber";
     return "green";
   }
+  // Reset-time is neutral reference text by default — it answers "when do I get
+  // more?", not "am I in trouble?". It only takes on color in the alert band
+  // (>= 90%), where "when does this reset?" becomes the question that matters,
+  // so the strip stays calm day-to-day and the color still means something.
+  function resetAlertClass(p) {
+    return (p != null && p >= 90) ? " cut-color-red" : "";
+  }
   function weeklyLabel(_weekly) {
     // Always show "Weekly" regardless of which model family is active. (The
     // family-specific weekly bucket is still selected for the percentage in
@@ -295,20 +426,14 @@
         </span>
         <div class="cut-divider"></div>
         <div class="cut-seg" data-cut="session">
-          <span class="cut-lwrap">
-            <span class="cut-label" data-cut-label>Session</span>
-            <span class="cut-bar" data-cut-bar aria-hidden="true"><span class="cut-bar-fill" data-cut-bar-fill style="width:0%"></span></span>
-          </span>
+          <span class="cut-label" data-cut-label>Session</span>
           <span class="cut-pct" data-cut-pct>—</span>
           <span class="cut-sep">·</span>
           <span class="cut-meta" data-cut-meta>waiting…</span>
         </div>
         <div class="cut-divider"></div>
         <div class="cut-seg" data-cut="weekly">
-          <span class="cut-lwrap">
-            <span class="cut-label" data-cut-label>Weekly</span>
-            <span class="cut-bar" data-cut-bar aria-hidden="true"><span class="cut-bar-fill" data-cut-bar-fill style="width:0%"></span></span>
-          </span>
+          <span class="cut-label" data-cut-label>Weekly</span>
           <span class="cut-pct" data-cut-pct>—</span>
           <span class="cut-sep">·</span>
           <span class="cut-meta" data-cut-meta>—</span>
@@ -518,7 +643,7 @@
     });
     // Session / Weekly segments: dynamic "Resets in …" text kept fresh in a
     // data attribute by renderSegment. Only shown when the inline
-    // "resets in …" meta is hidden by the narrow-width tiers (design/split
+    // "Reset in …" meta is hidden by the narrow-width tiers (design/split
     // mode) — no point in a tooltip repeating what's already visible.
     root.querySelectorAll(".cut-seg").forEach((seg) => {
       attachTip(seg, () => {
@@ -690,25 +815,28 @@
     const labelEl = segEl.querySelector('[data-cut-label]');
     const pctEl   = segEl.querySelector('[data-cut-pct]');
     const metaEl  = segEl.querySelector('[data-cut-meta]');
-    const barEl   = segEl.querySelector('[data-cut-bar]');
-    const fillEl  = segEl.querySelector('[data-cut-bar-fill]');
     if (labelOverride) labelEl.textContent = labelOverride;
     if (data && data.percent != null) {
       const p = data.percent;
-      pctEl.textContent = `${p}%`;
-      metaEl.textContent = data.resetsAt ? `resets in ${fmtReset(data.resetsAt)}` : "no reset info";
-      segEl.dataset.cutTip = data.resetsAt ? `Resets in ${fmtReset(data.resetsAt)}` : "No reset info";
       const cls = colorClass(p);
+      pctEl.textContent = `${p}%`;
+      // v1.2.5: "Reset in <time>" — the "<time>" span is neutral by default and
+      // only turns red in the alert band (>= 90%), so it isn't everyday color
+      // noise but still flags "nearly maxed" when that's the thing you care about.
+      if (data.resetsAt) {
+        metaEl.textContent = "Reset in ";
+        const rtEl = document.createElement("span");
+        rtEl.className = "cut-meta-rt" + resetAlertClass(p);
+        rtEl.textContent = fmtReset(data.resetsAt);
+        metaEl.appendChild(rtEl);
+      } else {
+        metaEl.textContent = "no reset info";
+      }
+      segEl.dataset.cutTip = data.resetsAt ? `Reset in ${fmtReset(data.resetsAt)}` : "No reset info";
       // Also tint the % number itself, and flag alert states:
       //   >= 90%  → red text ("cut-alert")
       //   = 100%  → red text + pulsing "maxed out" emphasis ("cut-alert-max")
       pctEl.className = "cut-pct cut-color-" + cls;
-      // v1.2.2: thin usage bar under the label, same color coding as the dot/%.
-      if (fillEl && barEl) {
-        fillEl.style.width = clampPct(p) + "%";
-        fillEl.className = "cut-bar-fill cut-color-" + cls;
-        barEl.classList.remove("cut-bar-empty");
-      }
       segEl.classList.toggle("cut-alert", p >= 90);
       segEl.classList.toggle("cut-alert-max", p >= 100);
     } else {
@@ -716,11 +844,6 @@
       pctEl.className = "cut-pct";
       metaEl.textContent = "waiting…";
       segEl.dataset.cutTip = "Waiting for data";
-      if (fillEl && barEl) {
-        fillEl.style.width = "0%";
-        fillEl.className = "cut-bar-fill";
-        barEl.classList.add("cut-bar-empty");
-      }
       segEl.classList.remove("cut-alert", "cut-alert-max");
     }
   }
@@ -753,13 +876,15 @@
         if (resetEl && rtEl) {
           if (it.data.resetsAt) {
             rtEl.textContent = fmtReset(it.data.resetsAt);
+            // v1.2.5: collapsed reset time is neutral except in the alert band.
+            rtEl.className = "cut-creset-txt" + resetAlertClass(p);
             resetEl.style.display = "";
           } else {
             resetEl.style.display = "none";
           }
         }
         tipEl.textContent = it.data.resetsAt
-          ? `${it.name} ${p}% · resets in ${fmtReset(it.data.resetsAt)}`
+          ? `${it.name} ${p}% · Reset in ${fmtReset(it.data.resetsAt)}`
           : `${it.name} ${p}% · no reset info`;
       } else {
         el.textContent = "—";
@@ -849,6 +974,7 @@
   const bootTimer = setInterval(() => {
     ensureMounted();
     reportModelIfChanged();
+    scanLockoutBanner();
     if (++bootAttempts >= 30) clearInterval(bootTimer);
   }, 1000);
 
@@ -860,6 +986,7 @@
       observerScheduled = false;
       ensureMounted();
       reportModelIfChanged();
+      scanLockoutBanner();
     }, 400);
   });
   observer.observe(document.body, { childList: true, subtree: true });
@@ -963,6 +1090,9 @@
   setInterval(() => {
     const root = document.getElementById(OVERLAY_ID);
     if (root) renderInto(root);
+    // v1.2.7: keep watching for the lockout banner past the 30s boot window,
+    // even if the page stops mutating (e.g. user is already locked out on load).
+    scanLockoutBanner();
   }, 30 * 1000);
 
   // ===== screen-recording / tab-visibility fix (v1.1.5) =====

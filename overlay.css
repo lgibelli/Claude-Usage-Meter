@@ -199,9 +199,10 @@
 }
 
 #claude-usage-overlay .cut-label {
-  text-transform: uppercase;
-  font-size: 8.5px;
-  letter-spacing: 0.06em;
+  /* v1.2.10: match the % size and use title case. At this size all-caps reads
+     as shouting and widens the strip; title case pairs cleanly with the number,
+     which still leads via its heavier weight + color. */
+  font-size: 12px;
   opacity: 0.62;
 }
 
@@ -216,6 +217,12 @@
 #claude-usage-overlay .cut-pct.cut-color-amber   { color: #f59e0b; }
 #claude-usage-overlay .cut-pct.cut-color-orange  { color: #f97316; }
 #claude-usage-overlay .cut-pct.cut-color-red     { color: #ef4444; font-weight: 700; }
+
+/* v1.2.5: reset-time span inside the expanded "Reset in <time>" meta. Neutral
+   reference text by default (inherits the muted meta color); only turns red in
+   the alert band (>= 90%) so it isn't everyday color noise. */
+#claude-usage-overlay .cut-meta-rt { font-weight: 600; }
+#claude-usage-overlay .cut-meta-rt.cut-color-red { color: #ef4444; font-weight: 700; }
 
 /* Red-alert state: any segment at >= 90% gets a subtle red wash so it's
    unmissable even at a glance. */
@@ -618,8 +625,7 @@
   }
   #claude-usage-overlay .cut-strip::-webkit-scrollbar { display: none; }
   #claude-usage-overlay .cut-label {
-    font-size: 8px;
-    letter-spacing: 0.04em;
+    font-size: 11px;
   }
   #claude-usage-overlay .cut-pct { font-size: 11px; }
   #claude-usage-overlay .cut-tooltip,
@@ -906,48 +912,7 @@
    red >=90.
    =========================================================================== */
 
-/* --- (a) linear bar under the label ------------------------------------- */
-
-/* The label gets a positioning context. The bar is absolutely positioned, so
-   it adds ZERO height to the strip and can't shift the flex row. */
-#claude-usage-overlay .cut-lwrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-}
-
-#claude-usage-overlay .cut-bar {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -4px;
-  height: 1px;
-  border-radius: 999px;
-  background: color-mix(in srgb, currentColor 20%, transparent);
-  overflow: hidden;
-  pointer-events: none;
-}
-
-#claude-usage-overlay .cut-bar-fill {
-  display: block;
-  height: 100%;
-  width: 0%;
-  border-radius: 999px;
-  background: currentColor;
-  opacity: 0.35;
-  transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.25s ease;
-}
-
-#claude-usage-overlay .cut-bar-fill.cut-color-green  { background: #10b981; opacity: 0.95; }
-#claude-usage-overlay .cut-bar-fill.cut-color-amber  { background: #f59e0b; opacity: 1; }
-#claude-usage-overlay .cut-bar-fill.cut-color-orange { background: #f97316; opacity: 1; }
-#claude-usage-overlay .cut-bar-fill.cut-color-red    { background: #ef4444; opacity: 1; }
-
-/* At 100% the bar joins the segment's pulse instead of sitting flat. */
-#claude-usage-overlay .cut-seg.cut-alert-max .cut-bar-fill { background: #ef4444; }
-
-/* --- (b) circular ring around S / W (collapsed view) --------------------- */
+/* --- (a) circular ring around S / W (collapsed view) --------------------- */
 
 #claude-usage-overlay .cut-cring {
   position: relative;
@@ -972,7 +937,7 @@
 }
 
 /* v1.2.2: 1.5 viewBox units over a 16px box (24 -> 16 = x0.667) renders as a
-   ~1px stroke — the same hairline weight as .cut-bar in the expanded view. */
+   ~1px stroke — a fine hairline that keeps the ring quiet around the letter. */
 #claude-usage-overlay .cut-cring-track {
   fill: none;
   stroke: currentColor;
@@ -1019,7 +984,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #claude-usage-overlay .cut-bar-fill,
   #claude-usage-overlay .cut-cring-fill {
     transition: none;
   }
@@ -1029,7 +993,6 @@
 @container cut-overlay (max-width: 330px) {
   #claude-usage-overlay .cut-cring { width: 15px; height: 15px; }
   #claude-usage-overlay .cut-cring .cut-clabel { font-size: 8.5px; }
-  #claude-usage-overlay .cut-bar { bottom: -3px; height: 1px; }
 }
 
 /* --- (d) collapsed: inline reset countdown ------------------------------- */
@@ -1041,15 +1004,19 @@
   align-items: center;
   gap: 2px;
   margin-left: 4px;
-  opacity: 0.55;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
+/* The rotate icon stays muted. The reset-time text is muted/neutral by default
+   too (v1.2.5) so the percentage still reads first; it only pops to full-strength
+   red in the alert band. Muting lives on the icon + text rather than the group so
+   the red alert isn't washed out by a group opacity. */
 #claude-usage-overlay .cut-creset-ic {
   width: 9px;
   height: 9px;
   flex-shrink: 0;
+  opacity: 0.55;
 }
 
 #claude-usage-overlay .cut-creset-txt {
@@ -1057,6 +1024,14 @@
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.01em;
+  opacity: 0.6;
+}
+
+/* v1.2.5: alert-only — collapsed reset time goes red (full strength) at >= 90%. */
+#claude-usage-overlay .cut-creset-txt.cut-color-red {
+  color: #ef4444;
+  font-weight: 700;
+  opacity: 1;
 }
 
 /* Below the ultra-compact tier the pill has to stay tiny — the reset time
