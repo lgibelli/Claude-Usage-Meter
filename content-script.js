@@ -1,4 +1,13 @@
-// content-script.js (isolated world, v1.14)
+// content-script.js (isolated world, v1.15)
+// - v1.2.4: the "Rate us" button no longer appears on install. It's now gated
+//   behind RATE_DELAY (2 days) from the recorded install time, so users get a
+//   chance to actually try the tool before being asked to review it — better
+//   for both the user (no immediate nag) and the review quality. background.js
+//   stamps install_at on install; existing users upgrading are backdated to 0
+//   so the button keeps showing for them. The gate is rateUnlocked(), checked
+//   on every render, so the button appears on its own once the 2 days pass —
+//   no reload needed. rate-wrap/divider default to display:none to avoid a
+//   flash before the async install-time read resolves.
 // - v1.2.10: expanded "Session" / "Weekly" labels now match the % size (12px;
 //   11px in the compact tier) and render in title case instead of small caps.
 //   With the bar gone the 8.5px eyebrow looked undersized; at value size,
@@ -299,6 +308,14 @@
   // out and the strip stays quiet in between.
   const RATE_AT_KEY = "rate_us_clicked_at";
   const SHARE_DELAY = 5 * 24 * 60 * 60 * 1000; // 5 days in milliseconds
+  // v1.2.4: the Rate us button no longer shows the instant the extension is
+  // installed. Asking for a review before the user has actually used the tool
+  // reads as pushy and earns worse reviews. We hold it back for RATE_DELAY from
+  // the install time (recorded by background.js), so the button appears only
+  // once the user has had a couple of days to form an opinion.
+  const INSTALL_KEY = "install_at";
+  const RATE_DELAY = 2 * 24 * 60 * 60 * 1000; // 2 days in milliseconds
+  let installAt = null;  // ms epoch of install; null = not yet loaded, 0 = pre-gate/upgrade user
   const DONATE_KEY = "donate_clicked_at";
   const DONATE_LINK = "https://buymeacoffee.com/selectorshub";
   const DONATE_COOLDOWN = 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds
@@ -451,8 +468,8 @@
         </div>
         <div class="cut-divider cut-msgs-divider" data-cut="msgs-divider" hidden></div>
         <span class="cut-msgs" data-cut="msgs" hidden></span>
-        <div class="cut-divider cut-rate-divider" data-cut="rate-divider"></div>
-        <span class="cut-rate-wrap" data-cut="rate-wrap">
+        <div class="cut-divider cut-rate-divider" data-cut="rate-divider" style="display:none"></div>
+        <span class="cut-rate-wrap" data-cut="rate-wrap" style="display:none">
           <button class="cut-rate" type="button" data-cut="rate"
                   aria-label="Rate Claude Usage Meter on the Chrome Web Store">
             <span class="cut-rate-star">⭐️</span><span class="cut-rate-txt">Rate us</span>
@@ -662,11 +679,23 @@
     }
   }
 
+  // Rate us is offered only once RATE_DELAY has elapsed since install. While
+  // installAt is still null the state hasn't loaded yet, so keep it hidden
+  // (the HTML defaults it to display:none to avoid a flash for new installs).
+  // installAt === 0 means an upgrading user with no recorded install time —
+  // treat the gate as already passed so they keep seeing the button.
+  function rateUnlocked() {
+    if (installAt === null) return false;
+    if (installAt === 0) return true;
+    return Date.now() - installAt >= RATE_DELAY;
+  }
+
   function applyRateVisibility(root) {
     if (!root) return;
     const rb = root.querySelector('[data-cut="rate-wrap"]') || root.querySelector('[data-cut="rate"]');
     const rd = root.querySelector('[data-cut="rate-divider"]');
-    const display = rated ? "none" : "";
+    // Hidden until the install gate passes, and again permanently once rated.
+    const display = (rateUnlocked() && !rated) ? "" : "none";
     if (rb) rb.style.display = display;
     if (rd) rd.style.display = display;
   }
@@ -1037,12 +1066,21 @@
         latestMsgsRemaining = resp.usage.messagesRemaining;
       }
       try {
-        const { [RATE_KEY]: rv, [RATE_AT_KEY]: rav, [SHARE_KEY]: sv, [COLLAPSE_KEY]: cv } =
-          await chrome.storage.local.get([RATE_KEY, RATE_AT_KEY, SHARE_KEY, COLLAPSE_KEY]);
+        const { [RATE_KEY]: rv, [RATE_AT_KEY]: rav, [SHARE_KEY]: sv, [COLLAPSE_KEY]: cv, [INSTALL_KEY]: iv } =
+          await chrome.storage.local.get([RATE_KEY, RATE_AT_KEY, SHARE_KEY, COLLAPSE_KEY, INSTALL_KEY]);
         rated = !!rv;
         ratedAt = Number(rav) || 0;
         shared = !!sv;
         collapsed = !!cv;
+        // Normally background.js records install_at on install/update. If it's
+        // somehow missing (storage cleared, unpacked load), start the 2-day
+        // clock now rather than leaving the button hidden forever.
+        if (iv === undefined) {
+          installAt = Date.now();
+          try { chrome.storage.local.set({ [INSTALL_KEY]: installAt }); } catch (_) {}
+        } else {
+          installAt = Number(iv) || 0;
+        }
         // Someone who rated on <= v1.2.2 has no timestamp. Start their clock now
         // rather than showing Share immediately — the whole point is the pause.
         if (rated && !ratedAt) {
@@ -1061,6 +1099,10 @@
       ratedAt = Number(changes[RATE_AT_KEY].newValue) || 0;
       const root = document.getElementById(OVERLAY_ID);
       if (root && !sharePopOpen) applyShareVisibility(root);
+    }
+    if (changes[INSTALL_KEY]) {
+      installAt = Number(changes[INSTALL_KEY].newValue) || 0;
+      applyRateVisibility(document.getElementById(OVERLAY_ID));
     }
     if (changes[RATE_KEY]) {
       rated = !!changes[RATE_KEY].newValue;

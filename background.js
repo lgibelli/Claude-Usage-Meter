@@ -611,6 +611,20 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   await chrome.storage.local.set({ [STORAGE_KEYS.settings]: cur });
   // Clear any badge text left over from older versions.
   try { await chrome.action.setBadgeText({ text: "" }); } catch (_) {}
+  // Record the install time once, to gate the "Rate us" button (extension
+  // v1.2.4). A brand-new install starts the 2-day clock now, so the button
+  // stays hidden until the user has actually lived with the tool. Existing
+  // users upgrading have no timestamp yet — we backdate them to 0 ("gate
+  // already elapsed") so the button keeps showing for them as before, rather
+  // than re-hiding it for two days on every update.
+  try {
+    const { install_at } = await chrome.storage.local.get("install_at");
+    if (install_at === undefined) {
+      await chrome.storage.local.set({
+        install_at: (details && details.reason === "install") ? Date.now() : 0
+      });
+    }
+  } catch (_) {}
   // On fresh install (not on update/reload), open the welcome page.
   if (details && details.reason === "install") {
     try {
