@@ -7,7 +7,10 @@
 //   so the button keeps showing for them. The gate is rateUnlocked(), checked
 //   on every render, so the button appears on its own once the 2 days pass —
 //   no reload needed. rate-wrap/divider default to display:none to avoid a
-//   flash before the async install-time read resolves.
+//   flash before the async install-time read resolves. Existing users who
+//   haven't rated see the button immediately on upgrade: background stamps
+//   install_at=0 for them, and a missing stamp is also read as 0 (show), so a
+//   long-time user is never re-gated for two days.
 // - v1.2.10: expanded "Session" / "Weekly" labels now match the % size (12px;
 //   11px in the compact tier) and render in title case instead of small caps.
 //   With the bar gone the 8.5px eyebrow looked undersized; at value size,
@@ -1075,9 +1078,15 @@
         // Normally background.js records install_at on install/update. If it's
         // somehow missing (storage cleared, unpacked load), start the 2-day
         // clock now rather than leaving the button hidden forever.
+        // Background records install_at on install/update. If it's missing here
+        // the user is NOT a brand-new install (fresh installs get their stamp
+        // from onInstalled before they ever open claude.ai) — it means an
+        // existing user whose update-write hasn't landed yet, or cleared/unpacked
+        // storage. In all of those the button should show, so treat the gate as
+        // passed (0). Don't persist it: if a real timestamp later arrives from
+        // background it updates via storage.onChanged.
         if (iv === undefined) {
-          installAt = Date.now();
-          try { chrome.storage.local.set({ [INSTALL_KEY]: installAt }); } catch (_) {}
+          installAt = 0;
         } else {
           installAt = Number(iv) || 0;
         }

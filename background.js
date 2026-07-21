@@ -607,16 +607,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === POLL_ALARM) pollUsage();
 });
 chrome.runtime.onInstalled.addListener(async (details) => {
-  const cur = await getSettings();
-  await chrome.storage.local.set({ [STORAGE_KEYS.settings]: cur });
-  // Clear any badge text left over from older versions.
-  try { await chrome.action.setBadgeText({ text: "" }); } catch (_) {}
-  // Record the install time once, to gate the "Rate us" button (extension
-  // v1.2.4). A brand-new install starts the 2-day clock now, so the button
-  // stays hidden until the user has actually lived with the tool. Existing
-  // users upgrading have no timestamp yet — we backdate them to 0 ("gate
-  // already elapsed") so the button keeps showing for them as before, rather
-  // than re-hiding it for two days on every update.
+  // Record the install time FIRST — before any other await that could throw or
+  // be interrupted — so the "Rate us" gate (extension v1.2.4) always has an
+  // authoritative value. A fresh install starts the 2-day clock now; an
+  // existing user upgrading (no prior timestamp) is backdated to 0 ("gate
+  // already passed") so the button keeps showing for them rather than being
+  // re-hidden for two days on every update.
   try {
     const { install_at } = await chrome.storage.local.get("install_at");
     if (install_at === undefined) {
@@ -625,6 +621,10 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       });
     }
   } catch (_) {}
+  const cur = await getSettings();
+  await chrome.storage.local.set({ [STORAGE_KEYS.settings]: cur });
+  // Clear any badge text left over from older versions.
+  try { await chrome.action.setBadgeText({ text: "" }); } catch (_) {}
   // On fresh install (not on update/reload), open the welcome page.
   if (details && details.reason === "install") {
     try {
