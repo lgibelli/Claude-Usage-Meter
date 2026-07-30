@@ -1,4 +1,93 @@
-// content-script.js (isolated world, v1.15)
+// content-script.js (isolated world, v1.25)
+// - v1.2.15 (production): RATE_DELAY restored to 2 days (the v1.2.11-1.2.14
+//   test builds set it to 0 for layout checks). Diagnostic console logging from
+//   the Fable investigation removed; console.warn/error for genuine failures
+//   (poll failure, notification failure, API error bodies) are kept.
+// - v1.2.14: (a) the settings popover now FOLLOWS its gear: positioning is
+//   extracted into positionSettingsPop(), re-run after every renderInto() (so
+//   unchecking a segment slides the popover with the shrinking strip), and on
+//   window resize/scroll while open. (b) force-refresh on mount so an account
+//   switch never shows the previous account's stored numbers for more than the
+//   round-trip of one poll (see background.js v1.17 for the org-stamp reset).
+// - v1.2.13: settings refinement from review:
+//   (a) "Messages left" checkbox removed from both settings surfaces; the "N
+//       left" counter reverts to fully automatic (appears only when the API's
+//       message_limit event carries a `remaining` count, hidden otherwise). A
+//       toggle for something most users can never make appear was confusing.
+//   (b) "Reset time" split per scope: resetTimeSession and resetTimeWeekly.
+//       Each meter's inline "Reset in …", collapsed countdown, and tooltip
+//       fallback follow its own toggle. The Fable tooltip's reset follows the
+//       WEEKLY toggle — Fable is a weekly quota; a third checkbox would be
+//       noise. Legacy stored `resetTime` seeds both new keys (migration in
+//       background.js normalizeStripFields), so an off stays off.
+// - v1.2.12: three changes from field testing:
+//   (a) The Fable segment renders as "F <pct>" at every width; its full story
+//       ("Fable usage 1% · Reset in 4d") lives in the hover tooltip and the
+//       aria-label. This buys back ~150px, so "Rate us" keeps its full wording
+//       everywhere above the pre-existing 480px tier (the v1.2.11 star-only
+//       collapse is reverted) and Session/Weekly keep reset times to 640px.
+//   (b) In-strip settings gear (expanded mode ONLY — hidden when collapsed):
+//       opens a "Show in strip" popover with the same five checkboxes as the
+//       popup panel, same last-meter lock, portaled to <body> like the share
+//       popover so container clipping can't trap it. Saves through the same
+//       save-settings/stripFields path, so popup and strip stay in sync via
+//       storage.onChanged. Collapsing the strip closes the popover (its anchor
+//       disappears).
+//   (c) The Fable row in the popover hides entirely when the API reports no
+//       Fable bucket — a checkbox that visibly does nothing reads as broken.
+// - v1.2.11 TEST: RATE_DELAY set to 0 so "Rate us" shows immediately on fresh
+//   install, for checking the three-segment + Rate-us fit. ██ REVERT to
+//   2 days before store submission ██ (marked at the constant itself).
+// - v1.2.11 (overlay.css): in the has-fable 640-780px band, Rate us collapses
+//   to its star (~40px) instead of the full "⭐ Rate us" (~85px), which doesn't
+//   fit alongside Session/Weekly reset times there. Above 780px the full
+//   button fits with everything on.
+// - v1.2.10 (overlay.css): progressive reset-time shedding. Showing the Fable
+//   segment used to hide ALL reset times below 740px — and Claude's composer is
+//   typically ~640-768px wide, so Fable appearing meant reset times vanishing,
+//   which read as a bug. Now only Fable's own reset is shed first (640-780px
+//   band, still hoverable via the segment tooltip); Session and Weekly keep
+//   theirs until the unchanged 640px base tier. Neither Fable's visibility nor
+//   any reset time depends on WHICH model is selected — only on the API
+//   reporting the bucket, the user's "Show in strip" choices, and width.
+// - v1.2.9: the segment label now uses the API's own scope.model.display_name
+//   ("Fable") when present, falling back to title-casing the family key.
+// - v1.2.8: fableData() now logs WHY the segment is hidden (off in the popup / no
+//   bucket reported / unparseable percentage / already shown as "Weekly"), once
+//   per distinct reason. "It's not showing" had four indistinguishable causes.
+// - v1.2.7: the strip is now user-configurable. settings.stripFields (edited in
+//   the popup's "Show in strip" panel) decides which parts render: Session,
+//   Weekly, Fable, the reset time, and the "N left" counter. Notes:
+//   (a) Applied by applyFieldVisibility() on every render, and picked up live via
+//       storage.onChanged, so ticking a box updates the strip immediately —
+//       no claude.ai reload.
+//   (b) Dividers follow their segment in the expanded view (the logo always
+//       precedes them, so a visible segment always wants its leading "|"), but
+//       in the collapsed pill a divider only shows when a chip precedes it —
+//       otherwise hiding Session would leave a stray leading separator.
+//   (c) Turning reset time off also suppresses the hover-tooltip fallback, which
+//       would otherwise smuggle it back in on narrow composers.
+//   (d) Defaults are all-on and the field set is normalized in background.js, so
+//       upgrading users see no change and a partial/legacy settings object can't
+//       blank out part of the strip.
+//   (e) Safety net: if the stored selection would leave zero meters (e.g. Fable
+//       only, then Fable access goes away), Session is forced back on rather
+//       than rendering an empty strip.
+// - v1.2.6: Fable limits in the strip. The Fable weekly quota now gets its own
+//   segment ("Fable 42% · Reset in 3d") next to Session and Weekly, plus an F
+//   ring in the collapsed pill, so it's no longer invisible behind the generic
+//   "Weekly" slot. Three notes on the behaviour:
+//   (a) Conditional, not permanent: the segment/chip default to display:none and
+//       are revealed only when background.js reports a `usage.fable` bucket.
+//       Accounts without Fable access see the strip exactly as before — no dash,
+//       no empty ring — and the segment appears on its own after the first poll
+//       that includes it, no reload needed.
+//   (b) No double-counting: "Weekly" now prefers the account-wide bucket, so
+//       switching to Fable no longer silently repoints "Weekly" at the Fable
+//       number. If the two ever resolve to the same API field anyway, fableData()
+//       returns null and the duplicate segment is dropped.
+//   (c) The label follows the API's own family suffix, so "Fable" becomes
+//       "Fable 5" automatically if claude.ai reports `seven_day_fable_5`.
 // - v1.2.4: the "Rate us" button no longer appears on install. It's now gated
 //   behind RATE_DELAY (2 days) from the recorded install time, so users get a
 //   chance to actually try the tool before being asked to review it — better
@@ -340,17 +429,51 @@
   let donateVisible = true;
   let shared = false;
   let collapsed = false;
+  // v1.2.6: whether the Fable segment currently has data (drives the F key in
+  // the collapse tooltip). Set by applyFableVisibility() on every render.
+  let fableVisible = false;
+  // v1.2.7: the popup's "Show in strip" selection. Defaults to everything on so
+  // the strip renders in full before the async settings read resolves — an
+  // upgrading user never sees a partial strip flash into place.
+  let stripFields = {
+    session: true,
+    weekly: true,
+    fable: true,
+    resetTimeSession: true,
+    resetTimeWeekly: true
+  };
+  function fieldOn(name) {
+    return stripFields[name] !== false;
+  }
+  // v1.2.13: reset-time visibility per meter. Fable rides on the Weekly toggle —
+  // it IS a weekly quota, and a third reset checkbox would be noise.
+  function resetOnFor(key) {
+    return key === "session" ? fieldOn("resetTimeSession") : fieldOn("resetTimeWeekly");
+  }
   const COLLAPSE_KEY = "strip_collapsed";
+
+  function collapseHintText() {
+    // Legend only names the chips actually on screen.
+    const keys = [];
+    if (fieldOn("session")) keys.push("S = session");
+    if (fieldOn("weekly")) keys.push("W = weekly");
+    if (fableVisible) keys.push("F = Fable");
+    const legend = keys.length ? ` (${keys.join(", ")})` : "";
+    return `Collapse the strip to a compact view${legend}. Click again anytime to expand.`;
+  }
 
   function applyCollapsed(root) {
     if (!root) return;
     root.classList.toggle("cut-collapsed", collapsed);
+    // v1.2.12: the gear is expanded-mode only (CSS hides it when collapsed), so
+    // its popover must not be left floating with no visible anchor.
+    if (collapsed && settingsPopOpen) closeSettingsPop(root);
     const btn = root.querySelector('[data-cut="collapse"]');
     const tip = root.querySelector('[data-cut="collapse-tip"]');
     if (btn) btn.setAttribute("aria-label", collapsed ? "Expand the usage strip" : "Collapse the usage strip");
     if (tip) tip.textContent = collapsed
       ? "Expand the strip back to the full view."
-      : "Collapse the strip to a compact view (S = session, W = weekly). Click again anytime to expand.";
+      : collapseHintText();
   }
   const SHARE_KEY = "share_clicked";
 
@@ -430,6 +553,98 @@
     return "Weekly";
   }
 
+  // v1.2.6: Fable's weekly quota as its own segment. It's a conditional segment —
+  // plenty of accounts have no Fable bucket in the usage API at all, and a
+  // permanent "—" would be worse than nothing — so the markup defaults to
+  // display:none and JS reveals it only once real data arrives (same
+  // default-hidden pattern as Rate us / Share, no flash on rebuild).
+  function fableData() {
+    const f = latestUsage && latestUsage.fable;
+    // v1.2.7: respect the user's "Show in strip" choice.
+    if (!fieldOn("fable")) return null;
+    if (!f || f.percent == null) return null;
+    // Guard against printing one bucket under two labels: if the generic Weekly
+    // slot had nothing else to fall back on and resolved to this same API field,
+    // the dedicated segment is redundant.
+    const w = latestUsage && latestUsage.weekly;
+    if (w && w.apiField && f.apiField && w.apiField === f.apiField) return null;
+    return f;
+  }
+
+  function fableLabel(f) {
+    // v1.2.9: the limits[] entry names itself (scope.model.display_name), so use
+    // that verbatim — it'll read "Fable 5" or whatever ships next without a code
+    // change. Falls back to title-casing the family key for legacy buckets.
+    if (f && f.displayName) return f.displayName;
+    const fam = (f && f.family) || "fable";
+    return fam.split(/[_\s]+/).map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(" ");
+  }
+
+  // v1.2.7: apply the popup's "Show in strip" selection. Runs on every render so
+  // a toggle takes effect live (storage.onChanged → renderInto), and so a
+  // segment that gains data mid-session still appears on its own.
+  function applyFieldVisibility(root, fable) {
+    if (!root) return;
+    fableVisible = !!fable;
+    // Lets overlay.css widen the "drop the reset text" breakpoint — three
+    // segments need more room on one line than two.
+    root.classList.toggle("cut-has-fable", fableVisible);
+
+    // "" (not a display value) restores the stylesheet's own display so the
+    // collapsed-mode !important rules and container-query tiers keep working.
+    const show = (sel, on) => {
+      const el = root.querySelector(sel);
+      if (el) el.style.display = on ? "" : "none";
+    };
+
+    const meters = [
+      { on: fieldOn("session"), seg: '[data-cut="session"]', div: '[data-cut="session-divider"]',
+        chip: '[data-cut="c-session-wrap"]', chipDiv: null },
+      { on: fieldOn("weekly"),  seg: '[data-cut="weekly"]',  div: '[data-cut="weekly-divider"]',
+        chip: '[data-cut="c-weekly-wrap"]',  chipDiv: '[data-cut="c-weekly-divider"]' },
+      { on: fableVisible,       seg: '[data-cut="fable"]',   div: '[data-cut="fable-divider"]',
+        chip: '[data-cut="c-fable-wrap"]',   chipDiv: '[data-cut="c-fable-divider"]' }
+    ];
+
+    // Safety net. The popup won't let you switch off the last meter, but the
+    // stored setting can still end up with nothing to show — e.g. someone picks
+    // Fable-only and then loses Fable access, so fableVisible goes false on its
+    // own. An empty strip reads as a broken extension, so fall back to Session.
+    if (!meters.some((m) => m.on)) meters[0].on = true;
+
+    let chipBefore = false;
+    for (const m of meters) {
+      show(m.seg, m.on);
+      // Expanded view: the logo always precedes the segments, so a visible
+      // segment always wants its leading divider and a hidden one never does.
+      show(m.div, m.on);
+      show(m.chip, m.on);
+      // Collapsed pill: dividers sit BETWEEN chips, so one is only correct when
+      // a chip is already on screen to its left — otherwise hiding Session
+      // would leave a stray leading "|".
+      if (m.chipDiv) show(m.chipDiv, m.on && chipBefore);
+      if (m.on) chipBefore = true;
+    }
+
+    // Reset time, per meter: the expanded "· Reset in 3h 20m" on each segment
+    // follows its own toggle (Fable's inline meta is permanently CSS-hidden; its
+    // tooltip follows the weekly toggle). The collapsed countdowns are owned by
+    // renderCompact(), gated on the same flags. Turning one back on sets
+    // display:"" so the narrow-width container tiers still get the final say.
+    for (const [segKey, flag] of [["session", resetOnFor("session")], ["weekly", resetOnFor("weekly")]]) {
+      root.querySelectorAll(`[data-cut="${segKey}"] .cut-meta, [data-cut="${segKey}"] .cut-sep`)
+        .forEach((el) => { el.style.display = flag ? "" : "none"; });
+    }
+
+    // The collapse tooltip lists the compact letters, so it goes stale when a
+    // chip is toggled or the F chip appears mid-session (first poll after a
+    // Fable message). Refresh it here rather than waiting for a collapse toggle.
+    if (!collapsed) {
+      const tip = root.querySelector('[data-cut="collapse-tip"]');
+      if (tip) tip.textContent = collapseHintText();
+    }
+  }
+
   function buildOverlay() {
     const root = document.createElement("div");
     root.id = OVERLAY_ID;
@@ -444,29 +659,41 @@
           <img class="cut-logo" src="${logoUrl}" alt="" />
           <span class="cut-tooltip" aria-hidden="true">${tooltipText}</span>
         </span>
-        <div class="cut-divider"></div>
+        <div class="cut-divider" data-cut="session-divider"></div>
         <div class="cut-seg" data-cut="session">
           <span class="cut-label" data-cut-label>Session</span>
           <span class="cut-pct" data-cut-pct>—</span>
           <span class="cut-sep">·</span>
           <span class="cut-meta" data-cut-meta>waiting…</span>
         </div>
-        <div class="cut-divider"></div>
+        <div class="cut-divider" data-cut="weekly-divider"></div>
         <div class="cut-seg" data-cut="weekly">
           <span class="cut-label" data-cut-label>Weekly</span>
           <span class="cut-pct" data-cut-pct>—</span>
           <span class="cut-sep">·</span>
           <span class="cut-meta" data-cut-meta>—</span>
         </div>
+        <div class="cut-divider" data-cut="fable-divider" style="display:none"></div>
+        <div class="cut-seg" data-cut="fable" style="display:none">
+          <span class="cut-label" data-cut-label>Fable</span>
+          <span class="cut-pct" data-cut-pct>—</span>
+          <span class="cut-sep">·</span>
+          <span class="cut-meta" data-cut-meta>—</span>
+        </div>
         <div class="cut-compact" data-cut="compact">
-          <span class="cut-cwrap">
+          <span class="cut-cwrap" data-cut="c-session-wrap">
             <span class="cut-cval" tabindex="0"><span class="cut-cring"><svg class="cut-cring-svg" viewBox="0 0 24 24" aria-hidden="true"><circle class="cut-cring-track" cx="12" cy="12" r="10"></circle><circle class="cut-cring-fill" data-cut="ring-session" cx="12" cy="12" r="10"></circle></svg><span class="cut-clabel">S</span></span> <span class="cut-cpct" data-cut="c-session">—</span><span class="cut-creset" data-cut="c-session-reset"><svg class="cut-creset-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 13.5a8.5 8.5 0 1 1-2.2-6.4"></path><polyline points="20.5 3 20.5 8 15.5 8"></polyline></svg><span class="cut-creset-txt" data-cut="c-session-rt">—</span></span></span>
             <span class="cut-ctip" data-cut="c-session-tip" aria-hidden="true">Waiting for data</span>
           </span>
-          <span class="cut-cdivider" aria-hidden="true"></span>
-          <span class="cut-cwrap">
+          <span class="cut-cdivider" data-cut="c-weekly-divider" aria-hidden="true"></span>
+          <span class="cut-cwrap" data-cut="c-weekly-wrap">
             <span class="cut-cval" tabindex="0"><span class="cut-cring"><svg class="cut-cring-svg" viewBox="0 0 24 24" aria-hidden="true"><circle class="cut-cring-track" cx="12" cy="12" r="10"></circle><circle class="cut-cring-fill" data-cut="ring-weekly" cx="12" cy="12" r="10"></circle></svg><span class="cut-clabel">W</span></span> <span class="cut-cpct" data-cut="c-weekly">—</span><span class="cut-creset" data-cut="c-weekly-reset"><svg class="cut-creset-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 13.5a8.5 8.5 0 1 1-2.2-6.4"></path><polyline points="20.5 3 20.5 8 15.5 8"></polyline></svg><span class="cut-creset-txt" data-cut="c-weekly-rt">—</span></span></span>
             <span class="cut-ctip" data-cut="c-weekly-tip" aria-hidden="true">Waiting for data</span>
+          </span>
+          <span class="cut-cdivider" data-cut="c-fable-divider" aria-hidden="true" style="display:none"></span>
+          <span class="cut-cwrap" data-cut="c-fable-wrap" style="display:none">
+            <span class="cut-cval" tabindex="0"><span class="cut-cring"><svg class="cut-cring-svg" viewBox="0 0 24 24" aria-hidden="true"><circle class="cut-cring-track" cx="12" cy="12" r="10"></circle><circle class="cut-cring-fill" data-cut="ring-fable" cx="12" cy="12" r="10"></circle></svg><span class="cut-clabel">F</span></span> <span class="cut-cpct" data-cut="c-fable">—</span><span class="cut-creset" data-cut="c-fable-reset"><svg class="cut-creset-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 13.5a8.5 8.5 0 1 1-2.2-6.4"></path><polyline points="20.5 3 20.5 8 15.5 8"></polyline></svg><span class="cut-creset-txt" data-cut="c-fable-rt">—</span></span></span>
+            <span class="cut-ctip" data-cut="c-fable-tip" aria-hidden="true">Waiting for data</span>
           </span>
         </div>
         <div class="cut-divider cut-msgs-divider" data-cut="msgs-divider" hidden></div>
@@ -492,6 +719,23 @@
             <button class="cut-share-net" data-net="reddit" title="Share on Reddit" aria-label="Share on Reddit"><svg viewBox="0 0 24 24" width="18" height="18"><rect width="24" height="24" rx="5" fill="#FF4500"/><ellipse cx="12" cy="14.2" rx="7.2" ry="5" fill="#fff"/><circle cx="4.6" cy="12.4" r="1.9" fill="#fff"/><circle cx="19.4" cy="12.4" r="1.9" fill="#fff"/><circle cx="17.6" cy="4.8" r="1.5" fill="#fff"/><path d="M12 9.6l1.1-4.6 3.4.8" stroke="#fff" stroke-width="1" fill="none" stroke-linecap="round"/><circle cx="9.3" cy="13.4" r="1.2" fill="#FF4500"/><circle cx="14.7" cy="13.4" r="1.2" fill="#FF4500"/><path d="M9.4 16.4c1.6 1.2 3.6 1.2 5.2 0" stroke="#FF4500" stroke-width="1" fill="none" stroke-linecap="round"/></svg></button>
             <button class="cut-share-net" data-net="facebook" title="Share on Facebook" aria-label="Share on Facebook"><svg viewBox="0 0 16 16" width="18" height="18"><path fill="#1877F2" d="M15 8a7 7 0 0 0-7-7 7 7 0 0 0-1.094 13.915v-4.892H5.13V8h1.777V6.458c0-1.754 1.045-2.724 2.644-2.724.766 0 1.567.137 1.567.137v1.723h-.883c-.87 0-1.14.54-1.14 1.093V8h1.941l-.31 2.023H9.094v4.892A7 7 0 0 0 15 8"/><path fill="#fff" d="M10.725 10.023 11.035 8H9.094V6.687c0-.553.27-1.093 1.14-1.093h.883V3.87s-.801-.137-1.567-.137c-1.6 0-2.644.97-2.644 2.724V8H5.13v2.023h1.777v4.892a7 7 0 0 0 2.188 0v-4.892z"/></svg></button>
           </span>
+        </span>
+        <span class="cut-settings-wrap" data-cut="settings-wrap">
+          <button class="cut-settings" type="button" data-cut="settings"
+                  aria-label="Choose what to show in this strip" aria-expanded="false">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          </button>
+          <span class="cut-settings-tooltip" aria-hidden="true">Choose what to show in this strip.</span>
+          <div class="cut-settings-pop" data-cut="settings-pop" style="display:none" role="group" aria-label="Show in strip">
+            <div class="cut-sp-title">Show in strip</div>
+            <label class="cut-sp-row"><input type="checkbox" data-sp="session" /><span>Session</span></label>
+            <label class="cut-sp-row"><input type="checkbox" data-sp="weekly" /><span>Weekly</span></label>
+            <label class="cut-sp-row" data-cut="sp-fable-row"><input type="checkbox" data-sp="fable" /><span>Fable <span class="cut-sp-key">F</span></span></label>
+            <div class="cut-sp-sep"></div>
+            <label class="cut-sp-row"><input type="checkbox" data-sp="resetTimeSession" /><span>Session reset time</span></label>
+            <label class="cut-sp-row"><input type="checkbox" data-sp="resetTimeWeekly" /><span>Weekly reset time</span></label>
+            <div class="cut-sp-foot" data-cut="sp-foot">Keep at least one meter on.</div>
+          </div>
         </span>
         <span class="cut-collapse-wrap">
           <button class="cut-collapse" type="button" data-cut="collapse" aria-label="Collapse the usage strip">
@@ -545,6 +789,24 @@
       });
     }
     const shareBtn = root.querySelector(".cut-share");
+    // v1.2.12: in-strip settings gear — toggles the "Show in strip" popover.
+    const settingsBtn = root.querySelector('[data-cut="settings"]');
+    if (settingsBtn) {
+      settingsBtn.addEventListener("click", (e) => {
+        e.preventDefault(); e.stopPropagation();
+        if (settingsPopOpen) closeSettingsPop(root);
+        else openSettingsPop(root);
+      });
+    }
+    const settingsPop = root.querySelector('[data-cut="settings-pop"]');
+    if (settingsPop) {
+      settingsPop.addEventListener("change", (e) => {
+        if (e.target && e.target.matches("input[data-sp]")) saveSettingsPop(settingsPop);
+      });
+      // Clicks inside the popover must not bubble to the strip's own click
+      // handlers (which drop tooltips) or the document outside-click closer.
+      settingsPop.addEventListener("click", (e) => e.stopPropagation());
+    }
     if (shareBtn) {
       shareBtn.addEventListener("click", (e) => {
         e.preventDefault(); e.stopPropagation();
@@ -654,6 +916,16 @@
     srcHtml(".cut-rate-wrap", ".cut-rate-tooltip");
     srcHtml('[data-cut="share-wrap"]', ".cut-share-tooltip");
     srcHtml(".cut-collapse-wrap", ".cut-collapse-tooltip");
+    // v1.2.12: gear tooltip, suppressed while its own popover is open (a hover
+    // tip floating next to an open panel is noise).
+    const sw = root.querySelector(".cut-settings-wrap");
+    if (sw) {
+      attachTip(sw, () => {
+        if (settingsPopOpen) return "";
+        const t = sw.querySelector(".cut-settings-tooltip");
+        return t ? t.innerHTML : "";
+      });
+    }
     srcHtml(".cut-close-wrap", ".cut-close-tooltip");
     root.querySelectorAll(".cut-cwrap").forEach((w) => {
       attachTip(w, () => {
@@ -667,6 +939,14 @@
     // mode) — no point in a tooltip repeating what's already visible.
     root.querySelectorAll(".cut-seg").forEach((seg) => {
       attachTip(seg, () => {
+        const key = seg.getAttribute("data-cut");
+        // v1.2.12: the Fable segment shows only "F <pct>" inline, so its tooltip
+        // is the ONLY place its full name and reset live — always allow it. (The
+        // tip text itself already omits the reset when that toggle is off.)
+        if (key === "fable") return seg.dataset.cutTip || "";
+        // v1.2.7/v1.2.13: if THIS meter's reset time is switched off, don't
+        // smuggle it back in via the hover tooltip.
+        if (!resetOnFor(key)) return "";
         const meta = seg.querySelector("[data-cut-meta]");
         if (meta && getComputedStyle(meta).display !== "none") return "";
         return seg.dataset.cutTip || "";
@@ -805,6 +1085,170 @@
     applyShareVisibility(root);
   }
 
+  // ===== v1.2.12: in-strip "Show in strip" popover =====
+  // Same portal-to-<body> technique as the share popover: the overlay is a size
+  // container (layout containment) and the narrow-mode strip scrolls, both of
+  // which clip absolutely-positioned children. Fixed-position under <body>
+  // escapes both. Mirrors the popup panel: same stripFields, same
+  // last-meter-locked rule; the two stay in sync through storage.onChanged.
+  let settingsPopOpen = false;
+  let settingsPopOutsideHandler = null;
+  let settingsPopFollowHandler = null;  // repositions on resize/scroll while open
+  let activeSettingsPop = null;
+  let activeSettingsWrap = null;
+
+  // v1.2.14: positioning lives in its own function so the popover can FOLLOW its
+  // gear. Unchecking a segment shrinks the strip and slides the gear left; a
+  // popover frozen at its open-time coordinates then floats disconnected from
+  // its anchor, which reads as broken UI. Every strip reflow funnels through
+  // renderInto(), so a single hook there re-anchors it for all triggers
+  // (checkbox toggles from either surface, data updates, Fable appearing);
+  // resize/scroll listeners cover viewport movement between renders.
+  function positionSettingsPop() {
+    const pop = activeSettingsPop;
+    const root = document.getElementById(OVERLAY_ID);
+    const btn = root && root.querySelector('[data-cut="settings"]');
+    if (!pop || !btn || !pop.isConnected || !settingsPopOpen) return;
+    const br = btn.getBoundingClientRect();
+    const pr = pop.getBoundingClientRect();
+    const margin = 8;
+    const vw = window.innerWidth;
+    let left = br.left + br.width / 2 - pr.width / 2;
+    left = Math.max(margin, Math.min(left, vw - pr.width - margin));
+    let top;
+    if (br.top >= pr.height + 14) {
+      top = br.top - pr.height - 10;
+      pop.classList.remove("cut-pop-below");
+    } else {
+      top = br.bottom + 10;
+      pop.classList.add("cut-pop-below");
+    }
+    const arrowX = Math.max(12, Math.min(br.left + br.width / 2 - left, pr.width - 12));
+    pop.style.setProperty("--cut-arrow-x", arrowX + "px");
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+  }
+
+  function spBoxes(pop) {
+    return Array.from(pop.querySelectorAll("input[data-sp]"));
+  }
+
+  function syncSettingsPop(pop) {
+    if (!pop) return;
+    for (const box of spBoxes(pop)) {
+      box.checked = fieldOn(box.getAttribute("data-sp"));
+    }
+    // The Fable row only makes sense when the API reports a Fable bucket; a
+    // checkbox that visibly does nothing reads as broken, so hide the row and
+    // its divider position stays natural.
+    const fRow = pop.querySelector('[data-cut="sp-fable-row"]');
+    const fableReported = !!(latestUsage && latestUsage.fable);
+    if (fRow) fRow.style.display = fableReported ? "" : "none";
+    // Lock the last enabled meter so the strip can't be emptied (same rule as
+    // the popup; an unreported Fable can't satisfy it — nothing to show).
+    const meterNames = fableReported ? ["session", "weekly", "fable"] : ["session", "weekly"];
+    const meters = spBoxes(pop).filter((b) => meterNames.includes(b.getAttribute("data-sp")));
+    const on = meters.filter((b) => b.checked);
+    const lockLast = on.length === 1;
+    for (const b of meters) {
+      const lock = lockLast && b.checked;
+      b.disabled = lock;
+      const row = b.closest(".cut-sp-row");
+      if (row) row.classList.toggle("cut-sp-locked", lock);
+    }
+    const foot = pop.querySelector('[data-cut="sp-foot"]');
+    if (foot) foot.classList.toggle("cut-sp-foot-show", lockLast);
+  }
+
+  function saveSettingsPop(pop) {
+    const sf = {};
+    for (const box of spBoxes(pop)) sf[box.getAttribute("data-sp")] = box.checked;
+    // Apply locally right away for a snappy strip update; the storage.onChanged
+    // round-trip lands the same values, so the double render is idempotent.
+    stripFields = { ...stripFields, ...sf };
+    syncSettingsPop(pop);
+    renderInto(document.getElementById(OVERLAY_ID));
+    try {
+      chrome.runtime.sendMessage({ type: "save-settings", settings: { stripFields: sf } });
+    } catch (_) {}
+  }
+
+  function openSettingsPop(root) {
+    const wrap = root.querySelector('[data-cut="settings-wrap"]');
+    const pop = root.querySelector('[data-cut="settings-pop"]');
+    const btn = root.querySelector('[data-cut="settings"]');
+    if (!wrap || !pop || !btn) return;
+    settingsPopOpen = true;
+    btn.setAttribute("aria-expanded", "true");
+    syncSettingsPop(pop);
+
+    activeSettingsPop = pop;
+    activeSettingsWrap = wrap;
+    pop.classList.add("cut-settings-pop-portal");
+    pop.classList.toggle("cut-pop-dark", root.classList.contains("cut-theme-dark"));
+    document.body.appendChild(pop);
+    pop.style.display = "block";
+    pop.style.position = "fixed";
+    pop.style.visibility = "hidden";
+    positionSettingsPop();
+    pop.style.visibility = "";
+
+    // Follow the gear while open: rAF-throttled reposition on viewport resize
+    // and any scroll (the strip lives in the page flow, the popover is fixed).
+    let followQueued = false;
+    settingsPopFollowHandler = () => {
+      if (followQueued) return;
+      followQueued = true;
+      requestAnimationFrame(() => { followQueued = false; positionSettingsPop(); });
+    };
+    window.addEventListener("resize", settingsPopFollowHandler);
+    window.addEventListener("scroll", settingsPopFollowHandler, true);
+
+    settingsPopOutsideHandler = (ev) => {
+      if (!pop.contains(ev.target) && ev.target !== btn && !btn.contains(ev.target)) {
+        closeSettingsPop(root);
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener("click", settingsPopOutsideHandler, true);
+    }, 0);
+  }
+
+  function closeSettingsPop(root) {
+    settingsPopOpen = false;
+    if (settingsPopOutsideHandler) {
+      document.removeEventListener("click", settingsPopOutsideHandler, true);
+      settingsPopOutsideHandler = null;
+    }
+    if (settingsPopFollowHandler) {
+      window.removeEventListener("resize", settingsPopFollowHandler);
+      window.removeEventListener("scroll", settingsPopFollowHandler, true);
+      settingsPopFollowHandler = null;
+    }
+    const pop = activeSettingsPop || (root && root.querySelector('[data-cut="settings-pop"]'));
+    if (pop) {
+      pop.style.display = "none";
+      pop.style.position = "";
+      pop.style.left = "";
+      pop.style.top = "";
+      pop.style.visibility = "";
+      pop.classList.remove("cut-settings-pop-portal", "cut-pop-dark", "cut-pop-below");
+      if (activeSettingsWrap && activeSettingsWrap.isConnected) {
+        activeSettingsWrap.appendChild(pop);
+      } else if (pop.parentNode === document.body) {
+        pop.remove();
+      }
+    }
+    activeSettingsPop = null;
+    const wrap = (activeSettingsWrap && activeSettingsWrap.isConnected)
+      ? activeSettingsWrap
+      : (root && root.querySelector('[data-cut="settings-wrap"]'));
+    activeSettingsWrap = null;
+    const btn = root && root.querySelector('[data-cut="settings"]');
+    if (btn) btn.setAttribute("aria-expanded", "false");
+    void wrap;
+  }
+
   async function applyDonateVisibility(root) {
     if (!root) return;
     const db = root.querySelector('[data-cut="donate-wrap"]') || root.querySelector('[data-cut="donate"]');
@@ -885,6 +1329,12 @@
       { key: "session", valSel: '[data-cut="c-session"]', tipSel: '[data-cut="c-session-tip"]', ringSel: '[data-cut="ring-session"]', letter: "S", name: "Session", data: latestUsage && latestUsage.session },
       { key: "weekly",  valSel: '[data-cut="c-weekly"]',  tipSel: '[data-cut="c-weekly-tip"]',  ringSel: '[data-cut="ring-weekly"]',  letter: "W", name: "Weekly",  data: latestUsage && latestUsage.weekly },
     ];
+    // v1.2.6: the F chip joins the pill only when there's a Fable bucket to show
+    // (its wrapper stays display:none otherwise, so no empty ring in the pill).
+    const fable = fableData();
+    if (fable) {
+      items.push({ key: "fable", valSel: '[data-cut="c-fable"]', tipSel: '[data-cut="c-fable-tip"]', ringSel: '[data-cut="ring-fable"]', letter: "F", name: fableLabel(fable), data: fable });
+    }
     for (const it of items) {
       const el = root.querySelector(it.valSel);
       const tipEl = root.querySelector(it.tipSel);
@@ -905,8 +1355,10 @@
           ringEl.setAttribute("class", "cut-cring-fill cut-color-" + cls);
         }
         // v1.2.2: inline reset countdown (icon + short time) in the collapsed pill.
+        // v1.2.13: gated per meter (session vs weekly; the F chip follows weekly).
+        const rtOn = resetOnFor(it.key);
         if (resetEl && rtEl) {
-          if (it.data.resetsAt) {
+          if (it.data.resetsAt && rtOn) {
             rtEl.textContent = fmtReset(it.data.resetsAt);
             // v1.2.5: collapsed reset time is neutral except in the alert band.
             rtEl.className = "cut-creset-txt" + resetAlertClass(p);
@@ -915,9 +1367,11 @@
             resetEl.style.display = "none";
           }
         }
-        tipEl.textContent = it.data.resetsAt
-          ? `${it.name} ${p}% · Reset in ${fmtReset(it.data.resetsAt)}`
-          : `${it.name} ${p}% · no reset info`;
+        tipEl.textContent = !rtOn
+          ? `${it.name} ${p}%`
+          : (it.data.resetsAt
+              ? `${it.name} ${p}% · Reset in ${fmtReset(it.data.resetsAt)}`
+              : `${it.name} ${p}% · no reset info`);
       } else {
         el.textContent = "—";
         el.className = "cut-cpct";
@@ -936,6 +1390,25 @@
     if (!root) return;
     renderSegment(root.querySelector('[data-cut="session"]'), latestUsage && latestUsage.session, "Session");
     renderSegment(root.querySelector('[data-cut="weekly"]'),  latestUsage && latestUsage.weekly,  weeklyLabel(latestUsage && latestUsage.weekly));
+    // v1.2.6/v1.2.7: Fable segment — rendered when the usage API reports a Fable
+    // bucket AND the user hasn't switched it off in the popup.
+    // v1.2.12: shown as just "F <pct>" to keep the full "Rate us" wording on one
+    // line; the full story ("Fable usage 1% · Reset in 4d") moves to its hover
+    // tooltip. The inline reset meta is suppressed permanently in overlay.css.
+    const fable = fableData();
+    applyFieldVisibility(root, fable);
+    if (fable) {
+      const segF = root.querySelector('[data-cut="fable"]');
+      renderSegment(segF, fable, "F");
+      if (segF) {
+        const name = fableLabel(fable); // "Fable" (or the API's display_name)
+        segF.dataset.cutTip = (fable.resetsAt && resetOnFor("fable"))
+          ? `${name} usage ${fable.percent}% · Reset in ${fmtReset(fable.resetsAt)}`
+          : `${name} usage ${fable.percent}%`;
+        // The F label is cryptic on its own — give assistive tech the long form.
+        segF.setAttribute("aria-label", segF.dataset.cutTip);
+      }
+    }
     renderCompact(root);
     applyRateVisibility(root);
     applyDonateVisibility(root);
@@ -943,6 +1416,9 @@
 
     const msgsEl  = root.querySelector('[data-cut="msgs"]');
     const msgsDiv = root.querySelector('[data-cut="msgs-divider"]');
+    // v1.2.13: no user toggle — the counter auto-appears whenever the API's
+    // message_limit event reports a `remaining` count (rare; typically only
+    // near limit states), and stays hidden otherwise, as it did pre-v1.2.7.
     if (latestMsgsRemaining != null) {
       msgsEl.textContent = `${latestMsgsRemaining} left`;
       msgsEl.hidden = false;
@@ -951,6 +1427,10 @@
       msgsEl.hidden = true;
       msgsDiv.hidden = true;
     }
+
+    // v1.2.14: any re-render can change the strip's content width and slide the
+    // gear; re-anchor the open settings popover after layout settles.
+    if (settingsPopOpen) requestAnimationFrame(positionSettingsPop);
   }
 
   function findMountTarget() {
@@ -1068,6 +1548,10 @@
         latestUsage = resp.usage;
         latestMsgsRemaining = resp.usage.messagesRemaining;
       }
+      // v1.2.7: the popup's "Show in strip" selection.
+      if (resp && resp.settings && resp.settings.stripFields) {
+        stripFields = { ...stripFields, ...resp.settings.stripFields };
+      }
       try {
         const { [RATE_KEY]: rv, [RATE_AT_KEY]: rav, [SHARE_KEY]: sv, [COLLAPSE_KEY]: cv, [INSTALL_KEY]: iv } =
           await chrome.storage.local.get([RATE_KEY, RATE_AT_KEY, SHARE_KEY, COLLAPSE_KEY, INSTALL_KEY]);
@@ -1098,12 +1582,27 @@
         }
       } catch (_) {}
       ensureMounted();
+      // v1.2.14: the initial render above used STORED state, which right after
+      // an account switch is the previous account's numbers. Kick a poll now so
+      // the fresh account's data lands and re-broadcasts within a second or two
+      // of the page appearing (the background's cookie listener usually beats
+      // this; the mount poll makes correctness independent of event timing).
+      try { chrome.runtime.sendMessage({ type: "force-refresh" }, () => { void chrome.runtime.lastError; }); } catch (_) {}
     } catch (_) {}
   })();
 
   // React to live changes of the "rate us" marker from elsewhere.
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== "local") return;
+    // v1.2.7: the popup writes stripFields into `settings`; apply it immediately
+    // so toggling a checkbox updates the strip without reloading claude.ai.
+    if (changes.settings) {
+      const sf = changes.settings.newValue && changes.settings.newValue.stripFields;
+      if (sf) {
+        stripFields = { ...stripFields, ...sf };
+        renderInto(document.getElementById(OVERLAY_ID));
+      }
+    }
     if (changes[RATE_AT_KEY]) {
       ratedAt = Number(changes[RATE_AT_KEY].newValue) || 0;
       const root = document.getElementById(OVERLAY_ID);

@@ -57,6 +57,39 @@
       Sign in to <strong>claude.ai</strong> in this browser. Click the refresh icon to retry.
     </div>
 
+    <button id="fields-toggle" class="fields-toggle" aria-expanded="false" aria-controls="fields-panel">
+      <svg class="fields-toggle-ic" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+      <span class="fields-toggle-txt">Show in strip</span>
+      <svg class="fields-toggle-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+    </button>
+
+    <div id="fields-panel" class="fields-panel hidden">
+      <div class="fields-hint">Pick what appears in the strip above the chat box.</div>
+      <label class="field-row">
+        <input type="checkbox" id="field-session" data-field="session" />
+        <span class="field-txt">Session <span class="field-key">S</span></span>
+      </label>
+      <label class="field-row">
+        <input type="checkbox" id="field-weekly" data-field="weekly" />
+        <span class="field-txt">Weekly <span class="field-key">W</span></span>
+      </label>
+      <label class="field-row" id="field-fable-row">
+        <input type="checkbox" id="field-fable" data-field="fable" />
+        <span class="field-txt">Fable <span class="field-key">F</span></span>
+        <span class="field-note hidden" id="field-fable-note">not reported yet</span>
+      </label>
+      <div class="fields-sep"></div>
+      <label class="field-row">
+        <input type="checkbox" id="field-resetTimeSession" data-field="resetTimeSession" />
+        <span class="field-txt">Session reset time</span>
+      </label>
+      <label class="field-row">
+        <input type="checkbox" id="field-resetTimeWeekly" data-field="resetTimeWeekly" />
+        <span class="field-txt">Weekly reset time</span>
+      </label>
+      <div class="fields-foot" id="fields-foot">Keep at least one meter on.</div>
+    </div>
+
     <div id="test-result" class="test-result hidden"></div>
 
     <footer>

@@ -588,6 +588,34 @@
   }
 }
 
+/* v1.2.12 (replaces the v1.2.10/11 band rules): the Fable segment renders as
+   just "F <pct>" at EVERY width — its full name and reset time live in its
+   hover tooltip ("Fable usage 1% · Reset in 4d"). Its inline meta is therefore
+   suppressed permanently, not by breakpoint. Two consequences:
+   (a) "Rate us" keeps its full wording again — the v1.2.11 star-only collapse
+       in this band is reverted; Tier 2 (< 480px) remains the only place it
+       shrinks, as before Fable existed.
+   (b) The three-segment strip now costs only ~50px more than the classic
+       two-segment one, so Session and Weekly keep their reset times down to
+       the unchanged 640px base tier. */
+#claude-usage-overlay [data-cut="fable"] .cut-meta,
+#claude-usage-overlay [data-cut="fable"] .cut-sep {
+  display: none !important;
+}
+
+/* Narrow safety band while the F chip is up: tighten the gap one notch and,
+   if it still can't fit, scroll horizontally (scrollbar hidden) instead of
+   clipping or wrapping — same escape hatch as the 330px tier. */
+@container cut-overlay (max-width: 720px) {
+  #claude-usage-overlay.cut-has-fable .cut-strip {
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  #claude-usage-overlay.cut-has-fable .cut-strip::-webkit-scrollbar { display: none; }
+}
+
 /* Tier 2 (< 480px): tighten spacing and shrink "Rate us" and "Support" to just icons. */
 @container cut-overlay (max-width: 480px) {
   #claude-usage-overlay .cut-strip { gap: 7px; }
@@ -1039,3 +1067,172 @@
 @container cut-overlay (max-width: 330px) {
   #claude-usage-overlay .cut-creset { display: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   v1.2.12 — in-strip settings gear + "Show in strip" popover.
+   The gear sits between Share and the collapse chevron, styled like the other
+   icon buttons. EXPANDED MODE ONLY: in collapsed mode the whole point is
+   minimalism, and the popup's panel still covers configuration there.
+--------------------------------------------------------------------------- */
+
+#claude-usage-overlay .cut-settings-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+#claude-usage-overlay .cut-settings {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 3px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  line-height: 1;
+  opacity: 0.65;
+  transition: opacity 0.12s, transform 0.15s;
+}
+
+#claude-usage-overlay .cut-settings:hover {
+  opacity: 1;
+  transform: rotate(20deg);
+}
+
+#claude-usage-overlay .cut-settings[aria-expanded="true"] { opacity: 1; }
+
+/* Collapsed mode: no gear. */
+#claude-usage-overlay.cut-collapsed .cut-settings-wrap {
+  display: none !important;
+}
+
+/* The popover itself. Base look while nested (rarely visible — it's portaled
+   to <body> on open); the portal class carries the same look at fixed
+   position, matching the share popover's conventions (.cut-pop-dark /
+   .cut-pop-below / --cut-arrow-x). */
+#claude-usage-overlay .cut-settings-pop,
+.cut-settings-pop-portal {
+  background: #1a1a1c;
+  color: #f1f1f2;
+  padding: 9px 12px 8px;
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.2);
+  z-index: 2147483647;
+  font: 500 12px/1.35 ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  min-width: 158px;
+}
+
+.cut-settings-pop-portal::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: var(--cut-arrow-x, 50%);
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border: 6px solid transparent;
+  border-top-color: #1a1a1c;
+}
+
+.cut-settings-pop-portal.cut-pop-below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: #1a1a1c;
+}
+
+/* claude.ai dark theme → light popover, same inversion as the share pop. */
+.cut-settings-pop-portal.cut-pop-dark {
+  background: #f5f3ef;
+  color: #1a1a1c;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.cut-settings-pop-portal.cut-pop-dark::after { border-top-color: #f5f3ef; }
+.cut-settings-pop-portal.cut-pop-dark.cut-pop-below::after {
+  border-top-color: transparent;
+  border-bottom-color: #f5f3ef;
+}
+
+.cut-settings-pop-portal .cut-sp-title,
+#claude-usage-overlay .cut-sp-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  opacity: 0.6;
+  margin-bottom: 6px;
+}
+
+.cut-settings-pop-portal .cut-sp-row,
+#claude-usage-overlay .cut-sp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.cut-settings-pop-portal .cut-sp-row input[type="checkbox"],
+#claude-usage-overlay .cut-sp-row input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: #d97757;
+  cursor: pointer;
+}
+
+.cut-settings-pop-portal .cut-sp-row input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.cut-settings-pop-portal .cut-sp-locked { cursor: default; opacity: 0.75; }
+
+/* The strip letter for a meter, mirroring the popup's .field-key chips. */
+.cut-settings-pop-portal .cut-sp-key,
+#claude-usage-overlay .cut-sp-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 2px;
+  margin-left: 4px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-size: 8.5px;
+  font-weight: 700;
+  opacity: 0.55;
+}
+
+.cut-settings-pop-portal .cut-sp-sep,
+#claude-usage-overlay .cut-sp-sep {
+  height: 1px;
+  background: currentColor;
+  opacity: 0.15;
+  margin: 5px 0;
+}
+
+.cut-settings-pop-portal .cut-sp-foot,
+#claude-usage-overlay .cut-sp-foot {
+  font-size: 9.5px;
+  padding-top: 5px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  color: #fbbf24;
+}
+.cut-settings-pop-portal .cut-sp-foot-show { opacity: 1; }
+
+/* Ultra-compact tier: the gear tooltip joins the other suppressed tooltips
+   (the popover itself is portaled to <body>, so it is NOT clipped and stays
+   fully usable at every width). */
+@container cut-overlay (max-width: 330px) {
+  #claude-usage-overlay .cut-settings-tooltip { display: none; }
+}
+
+/* The gear's tooltip text is a source node for the JS portal tip only — never
+   render it in place (the portal tip positions itself and can't be clipped). */
+#claude-usage-overlay .cut-settings-tooltip { display: none; }

@@ -1,4 +1,8 @@
-// popup.js (v1.4)
+// popup.js (v1.5)
+// - v1.2.7: "Show in strip" field picker. Writes settings.stripFields; the strip
+//   applies it live via storage.onChanged. The last enabled meter is locked so
+//   the strip can't be emptied, and an unreported Fable bucket doesn't count as
+//   a meter for that rule (it has nothing to show yet).
 
 const CHROME_REVIEW_URL = "https://chromewebstore.google.com/detail/claude-usage-meter/kgpahkcgadpnklinijdojapiadnfelae/reviews";
 const EDGE_REVIEW_URL = "https://microsoftedge.microsoft.com/addons/detail/claude-usage-meter/anhdhmpfpgbohohjlbgnggnmcmkmmcbn";
@@ -147,6 +151,7 @@ async function render(state) {
   document.getElementById("weekly-lbl").textContent =
     weeklyLabelFor(usage && usage.weekly, currentModel);
   renderMessagesLeft(usage);
+  renderFields(state && state.settings, usage);
   document.getElementById("updated").textContent = fmtUpdated(usage && usage.updatedAt);
   document.getElementById("empty-hint").classList.toggle("hidden", hasSession || hasWeekly);
   renderError(state);
@@ -160,6 +165,100 @@ async function refresh({ forceFetch = false } = {}) {
   }
   const state = await chrome.runtime.sendMessage({ type: "get-state" });
   await render(state);
+}
+
+/* ---------------------------------------------------------------------------
+   v1.2.7 — "Show in strip" field picker.
+   Writes settings.stripFields; content-script.js picks the change up via
+   storage.onChanged and re-renders the strip live (no page reload).
+--------------------------------------------------------------------------- */
+
+// Meters are the load-bearing rows: turning all three off would leave an empty
+// strip, so the last one standing gets locked. resetTime/messages are trimmings
+// and can all be off.
+const METER_FIELDS = ["session", "weekly", "fable"];
+// v1.2.13: reset time split per scope; the "Messages left" toggle is retired
+// (the counter auto-appears on the rare occasions the API reports it).
+const ALL_FIELDS = [...METER_FIELDS, "resetTimeSession", "resetTimeWeekly"];
+
+// Whether the usage API is actually reporting a Fable bucket for this account.
+// A checked-but-unreported Fable can't satisfy the "keep one meter on" rule —
+// otherwise unchecking Session and Weekly would leave a visibly empty strip.
+let fableAvailable = false;
+
+function fieldBox(name) {
+  return document.getElementById(`field-${name}`);
+}
+
+function effectiveMeters() {
+  return METER_FIELDS.filter((f) => f !== "fable" || fableAvailable);
+}
+
+function readFields() {
+  const out = {};
+  for (const f of ALL_FIELDS) {
+    const box = fieldBox(f);
+    if (box) out[f] = box.checked;
+  }
+  return out;
+}
+
+// Locks whichever meter is the only one left on, so the strip always has at
+// least one number in it. Also surfaces the reason instead of silently
+// swallowing the click.
+function applyMeterLock() {
+  const meters = effectiveMeters();
+  const on = meters.filter((f) => { const b = fieldBox(f); return b && b.checked; });
+  const lockLast = on.length === 1;
+  for (const f of METER_FIELDS) {
+    const box = fieldBox(f);
+    if (!box) continue;
+    const lock = lockLast && box.checked && meters.includes(f);
+    box.disabled = lock;
+    box.title = lock ? "At least one meter has to stay visible." : "";
+    const row = box.closest(".field-row");
+    if (row) row.classList.toggle("locked", lock);
+  }
+  const foot = document.getElementById("fields-foot");
+  if (foot) foot.classList.toggle("show", lockLast);
+}
+
+function renderFields(settings, usage) {
+  const sf = (settings && settings.stripFields) || {};
+  fableAvailable = !!(usage && usage.fable);
+  for (const f of ALL_FIELDS) {
+    const box = fieldBox(f);
+    if (box) box.checked = sf[f] !== false;
+  }
+  // Be honest about Fable: if the usage API hasn't reported a Fable bucket for
+  // this account, the checkbox does nothing visible yet. Say so rather than
+  // letting the user think the toggle is broken.
+  const note = document.getElementById("field-fable-note");
+  if (note) note.classList.toggle("hidden", fableAvailable);
+  applyMeterLock();
+}
+
+async function saveFields() {
+  applyMeterLock();
+  try {
+    await chrome.runtime.sendMessage({
+      type: "save-settings",
+      settings: { stripFields: readFields() }
+    });
+  } catch (_) {}
+}
+
+document.getElementById("fields-toggle").addEventListener("click", () => {
+  const btn = document.getElementById("fields-toggle");
+  const panel = document.getElementById("fields-panel");
+  const open = btn.getAttribute("aria-expanded") === "true";
+  btn.setAttribute("aria-expanded", open ? "false" : "true");
+  panel.classList.toggle("hidden", open);
+});
+
+for (const f of ALL_FIELDS) {
+  const box = fieldBox(f);
+  if (box) box.addEventListener("change", saveFields);
 }
 
 document.getElementById("refresh-btn").addEventListener("click", () => refresh({ forceFetch: true }));

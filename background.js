@@ -1,119 +1,3 @@
-// background.js  (v1.12)
-// Changes in extension v1.1.5:
-//   - Fix: usage strip went blank (showing "—") while recording with screen
-//     capture tools like Screen Studio. Root cause: macOS screen capture APIs
-//     cause Chrome to treat the captured window as "hidden", which triggers
-//     Chrome's service-worker throttling — chrome.alarms stops firing on
-//     schedule, the poll never runs, and no data reaches the strip. Two fixes:
-//     (1) content-script.js now listens for `visibilitychange` and fires a
-//     `force-refresh` message the moment the tab becomes visible again, so
-//     data is always current when the recording resumes or stops.
-//     (2) content-script.js sends a `keepalive` ping every 20 s to prevent
-//     the background service worker from being suspended mid-recording.
-//     background.js handles `keepalive` as a lightweight no-op so the service
-//     worker stays alive and alarms keep firing.
-// Changes in extension v1.1.4:
-//   - Fix: usage never showed for accounts that belong to an organization
-//     (e.g. a company-managed org alongside a personal org). getOrgId picked
-//     the first org from /api/organizations with a "chat" capability, which
-//     for multi-org accounts is often NOT the org the user is actually using,
-//     so /usage was queried for the wrong org and returned nothing. We now
-//     read the active org from claude.ai's `lastActiveOrg` cookie (the same
-//     source the page itself uses) via chrome.cookies, falling back to the
-//     organizations-list heuristic only when the cookie is unavailable. Also
-//     reflects org switches immediately. Requires the new "cookies" permission.
-//   - (rolled in from interim builds) message_limit lockout pins session to
-//     100%; X-Organization-UUID header sent on /usage; error-shaped response
-//     bodies surfaced; raw /usage stored for diagnostics; limit=0 handled as
-//     100%/0%; % text colored red with a pulse at >=90% / 100%.
-// background.js  (v1.10)
-// Changes in extension v1.1.7:
-//   - Fix: claude.ai's usage endpoint now requires an `X-Organization-UUID`
-//     header for session-cookie auth — without it the request fails with
-//     {"type":"error","error":{"type":"authentication_error",
-//     "message":"X-Organization-UUID header is required for session key
-//     authentication"}} and no usage data is returned. We now send the org
-//     UUID (already discovered via getOrgId) on both the primary and the
-//     404-retry usage fetch.
-//   - Add: error-shaped response bodies ({"type":"error",...}) are now
-//     detected and surfaced via lastError instead of being parsed as empty
-//     usage (which left the strip blank/stale with no explanation).
-// Changes in extension v1.1.6:
-//   - Fix: when the session limit was actually HIT (100% / "Usage limit
-//     reached"), the strip and popup showed 0% instead of 100%. Root cause:
-//     the /api/organizations/{id}/usage poll reports the fresh rolling window
-//     (~0%) at the moment the cap is reached, while the real lockout is
-//     delivered via the completion stream's `message_limit` event (the same
-//     source as Claude's own red "Usage limit reached" bar). We now read the
-//     reached/exhausted signal from that event and pin the session to 100%
-//     until its reset time, so a lagging poll can't reset it to a stale 0%.
-//   - Add: the raw /usage response is stored (`usage_raw`) and logged to the
-//     service worker console to make verifying undocumented field shapes
-//     (e.g. the exact 100%/limit-reached representation) straightforward.
-// Changes in extension v1.1.4:
-//   - Fix: session / weekly usage showed "—" (no data) when a quota was
-//     completely exhausted (100%) or brand-new (0%) if the API returned
-//     `limit: 0` alongside `used`. The `pickPct` helper skipped the
-//     used/limit path when limit=0 (division-by-zero guard), then found no
-//     fallback utilization field, and returned null — causing the strip to
-//     display dashes instead of 100% (or 0%). Fix: intercept the limit=0
-//     case explicitly: used>0 → 100%, used=0 → 0%.
-// Changes in extension v1.1.0:
-//   - Fable 5 / Mythos 5 (and future model) support: per-model weekly usage
-//     buckets are now extracted dynamically from the usage API field suffix
-//     (seven_day_<family> / weekly_<family>) instead of a hardcoded
-//     opus/sonnet/haiku whitelist; fuzzy bucket matching + generic fallback.
-//   - Model picker detection updated (Fable/Mythos added, "Claude" prefix
-//     optional). Labels render multi-word families ("fable_5" -> "Fable 5").
-// Changes in extension v1.0.9:
-//   - Add: "Rate us" now routes to the correct store. Edge users open the
-//     Microsoft Edge Add-ons listing; everyone else opens the Chrome Web Store
-//     review page. Browser is detected via navigator.userAgentData brands with
-//     a UA-token fallback ("Edg/" etc).
-//   - Harden: the rate flag is persisted directly on click in the strip too, so
-//     once "Rate us" is clicked it never reappears even if the background
-//     message path fails.
-// Changes in extension v1.0.8:
-//   - Remove: the auto-scroll feature (added in v1.0.6). It interfered with
-//     the page's scroll position while the overlay was mounted; removing it
-//     resolves the scroll issue. The `autoScrollEnabled` setting is gone.
-// Changes in extension v1.0.6:
-//   - Add: optional auto-scroll. While a Claude response streams in, the chat
-//     transcript is kept pinned to the bottom so you don't have to scroll
-//     manually — but only when you're already near the bottom, so scrolling up
-//     to read earlier messages is never interrupted. Toggle it in Settings
-//     ("Reading experience" → "Auto-scroll chat to bottom"); default ON. The
-//     behaviour lives in content-script.js and reads the `autoScrollEnabled`
-//     setting (new default below).
-// Changes in extension v1.0.5:
-//   - Rename: the extension is now "Claude Usage Meter" (formerly "Claude
-//     Usage Tracker"). User-facing labels (toolbar title, options page,
-//     in-chat tooltip, test notification) updated accordingly. Internal
-//     message-channel and CSS identifiers are unchanged.
-// Changes in extension v1.0.4:
-//   - Add: the on-page usage strip now follows claude.ai's OWN theme. When
-//     Claude is in dark mode the strip automatically switches to dark (and
-//     light when Claude is light), independent of the OS preference, and
-//     updates live when the theme is toggled. See content-script.js /
-//     overlay.css (.cut-theme-dark / .cut-theme-light).
-// Changes in extension v1.0.3:
-//   - Fix: session %, weekly % could falsely display as 100% (or other
-//     inflated values) when actual usage was very low. The `utilization`
-//     field returned by Claude's /api/organizations/{id}/usage endpoint is
-//     already a percentage in 0..100 — not a 0..1 fraction. The previous
-//     `v > 1 ? v : v * 100` heuristic corrupted any utilization value <= 1:
-//     `utilization: 1` (1%) became 100%, `utilization: 0.5` (0.5%) became
-//     50%, and so on. We now treat `utilization`, `percent`, and
-//     `percentage` uniformly as 0..100, and prefer `used / limit` when
-//     both are present.
-// Changes vs v1.3:
-//   - No toolbar badge counter (icon stays clean).
-//   - On settings save, we reset fired-marker state and re-check thresholds against
-//     current usage so a freshly-added threshold fires immediately if already crossed.
-//   - notifications.create uses the callback form so we capture chrome.runtime.lastError
-//     and surface failures (helps when OS-level notif permission is blocking).
-//   - getPermissionLevel() is returned in get-state so the popup can warn.
-
 const POLL_ALARM = "claude-usage-poll";
 const DEFAULT_POLL_MINUTES = 1;
 const ORG_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -159,8 +43,43 @@ const DEFAULT_SETTINGS = {
   sessionThresholds: [50, 75, 90],
   weeklyThresholds:  [50, 75, 90],
   notificationsEnabled: true,
-  pollMinutes: DEFAULT_POLL_MINUTES
+  pollMinutes: DEFAULT_POLL_MINUTES,
+  // v1.2.13: which parts of the on-page strip to render. All on by default, so
+  // upgrading users see no change. Read by content-script.js (expanded AND
+  // collapsed views) and edited from the popup panel or the in-strip gear.
+  // `session`/`weekly`/`fable` toggle whole segments; the reset-time toggles are
+  // per scope — `resetTimeSession` covers the Session segment's "Reset in …"
+  // (and its collapsed countdown), `resetTimeWeekly` covers Weekly AND the
+  // Fable tooltip's reset (Fable is a weekly quota). The v1.2.7 single
+  // `resetTime` key and the `messages` key are retired: a stored legacy
+  // `resetTime` seeds both new keys in normalizeStripFields(), and the
+  // "N left" counter now simply auto-appears whenever the API reports it —
+  // a checkbox for something most users can never make appear was confusing.
+  stripFields: {
+    session: true,
+    weekly: true,
+    fable: true,
+    resetTimeSession: true,
+    resetTimeWeekly: true
+  }
 };
+
+// Merge helper for stripFields: a partial or legacy-missing object must still
+// resolve to a complete set of booleans. Unknown/retired keys (resetTime,
+// messages) are dropped; a legacy `resetTime` boolean seeds BOTH per-scope
+// keys so a user who had reset times off stays off after the split.
+function normalizeStripFields(sf) {
+  const d = DEFAULT_SETTINGS.stripFields;
+  const out = {};
+  for (const k of Object.keys(d)) {
+    out[k] = (sf && typeof sf[k] === "boolean") ? sf[k] : d[k];
+  }
+  if (sf && typeof sf.resetTime === "boolean") {
+    if (typeof sf.resetTimeSession !== "boolean") out.resetTimeSession = sf.resetTime;
+    if (typeof sf.resetTimeWeekly  !== "boolean") out.resetTimeWeekly  = sf.resetTime;
+  }
+  return out;
+}
 
 const STORAGE_KEYS = {
   usage: "usage_state",
@@ -178,17 +97,21 @@ const STORAGE_KEYS = {
 
 async function getSettings() {
   const { [STORAGE_KEYS.settings]: s } = await chrome.storage.local.get(STORAGE_KEYS.settings);
-  return { ...DEFAULT_SETTINGS, ...(s || {}) };
+  const merged = { ...DEFAULT_SETTINGS, ...(s || {}) };
+  merged.stripFields = normalizeStripFields(merged.stripFields);
+  return merged;
 }
 async function getUsage() {
   const { [STORAGE_KEYS.usage]: u } = await chrome.storage.local.get(STORAGE_KEYS.usage);
   return u || {
     session: null,
     weekly: null,
+    fable: null,
     weeklyByFamily: {},
     messagesRemaining: null,
     messagesResetAt: null,
-    updatedAt: null
+    updatedAt: null,
+    orgId: null
   };
 }
 async function saveUsage(u) {
@@ -286,7 +209,7 @@ async function getOrgId(forceRefresh = false) {
 
 async function pollUsage() {
   try {
-    const orgId = await getOrgId();
+    let orgId = await getOrgId();
     let resp = await fetch(`https://claude.ai/api/organizations/${orgId}/usage`, {
       credentials: "include",
       headers: { accept: "application/json", "X-Organization-UUID": orgId }
@@ -297,6 +220,7 @@ async function pollUsage() {
     }
     if (resp.status === 404) {
       const fresh = await getOrgId(true);
+      orgId = fresh;
       resp = await fetch(`https://claude.ai/api/organizations/${fresh}/usage`, {
         credentials: "include",
         headers: { accept: "application/json", "X-Organization-UUID": fresh }
@@ -321,8 +245,7 @@ async function pollUsage() {
     try {
       await chrome.storage.local.set({ [STORAGE_KEYS.usageRaw]: { data, ts: Date.now() } });
     } catch (_) {}
-    console.debug("[ClaudeUsage] raw /usage response:", data);
-    await applyUsage(data);
+    await applyUsage(data, orgId);
     await setLastError(null);
   } catch (err) {
     const msg = (err && err.message) || String(err);
@@ -387,12 +310,44 @@ function familyOfField(field) {
   return "other";
 }
 
-async function applyUsage(data) {
-  const usage = await getUsage();
+async function applyUsage(data, orgId) {
+  let usage = await getUsage();
+
+  // v1.2.14: account/org isolation. This function used to merge new data into
+  // whatever usage_state was already stored — fine for one account, but after
+  // switching accounts/orgs the previous account's session lock, fired
+  // notification markers, message counter, and any bucket the new response
+  // didn't overwrite all bled through. Now every poll is stamped with the org
+  // it queried; when that differs from the stored stamp, we start from a blank
+  // state and clear the cross-account side channels.
+  if (orgId && usage.orgId && usage.orgId !== orgId) {
+    usage = {
+      session: null,
+      weekly: null,
+      fable: null,
+      weeklyByFamily: {},
+      messagesRemaining: null,
+      messagesResetAt: null,
+      updatedAt: null
+    };
+    await setSessionLock(null);   // the old account's lockout must not pin the new one to 100%
+    await saveLastFired({});      // notification thresholds re-arm for the new account
+  }
+  if (orgId) usage.orgId = orgId;
+
+  // v1.2.9: limits[] is the canonical source; the legacy top-level fields are
+  // kept as a fallback for older/partial responses.
+  const fromLimits = parseLimitsArray(data && data.limits);
 
   const session = data.five_hour || data.session;
   const sPct = pickPct(session);
-  if (sPct != null) usage.session = { percent: sPct, resetsAt: pickReset(session) };
+  if (sPct != null) {
+    // Legacy five_hour stays the primary session source — it's what the
+    // message_limit lockout pinning below is built around.
+    usage.session = { percent: sPct, resetsAt: pickReset(session) };
+  } else if (fromLimits.session) {
+    usage.session = fromLimits.session;
+  }
 
   const weeklyByFamily = {};
   for (const field of Object.keys(data || {})) {
@@ -405,8 +360,41 @@ async function applyUsage(data) {
       apiField: field
     };
   }
+  // limits[] wins on conflict: it names its own model instead of relying on a
+  // field-name convention, and it's the only source of per-model quotas.
+  Object.assign(weeklyByFamily, fromLimits.weeklyByFamily);
+
   usage.weeklyByFamily = weeklyByFamily;
-  usage.weekly = pickWeeklyForActiveFamily(weeklyByFamily, await getCurrentModel());
+  // v1.2.6: Fable has its own strip segment, so pull its bucket out explicitly
+  // and keep the generic "Weekly" slot off it (see pickWeeklyForActiveFamily).
+  usage.fable = pickFableBucket(weeklyByFamily);
+
+  // v1.2.8 fallback: the loop above only considers keys starting with
+  // `seven_day` / `weekly`, which is an assumption about a naming convention
+  // Anthropic has never documented. If nothing matched, sweep EVERY top-level
+  // key for one mentioning Fable (`fable_5`, `fable_weekly`, `weekly_limit_fable`
+  // — any shape), accepting the first that parses as a percentage. pickPct()
+  // returning null is the filter that keeps non-bucket keys out.
+  if (!usage.fable) {
+    for (const field of Object.keys(data || {})) {
+      if (!/fable/i.test(field)) continue;
+      const pct = pickPct(data[field]);
+      if (pct == null) continue;
+      usage.fable = {
+        percent: pct,
+        resetsAt: pickReset(data[field]),
+        apiField: field,
+        family: familyOfField(field) === "other" ? "fable" : familyOfField(field)
+      };
+      break;
+    }
+  }
+
+  usage.weekly = pickWeeklyForActiveFamily(
+    weeklyByFamily,
+    await getCurrentModel(),
+    usage.fable ? usage.fable.family : null
+  );
 
   // Honour an active session lockout. When the limit is hit, the /usage poll
   // can still report the fresh rolling window at ~0% even though messages are
@@ -428,18 +416,103 @@ async function applyUsage(data) {
   await broadcastUsage(usage);
 }
 
-function pickWeeklyForActiveFamily(weeklyByFamily, currentModel) {
+// v1.2.6: locate the Fable weekly bucket regardless of the exact suffix the
+// usage API uses. familyOfField() has already reduced `seven_day_fable_5` to
+// `fable_5`, so a substring test on the family key covers `fable`, `fable_5`,
+// `fable_5_preview` and anything else in that shape. Returns null when the
+// account has no Fable bucket at all (no access, or the API doesn't report one),
+// which is what keeps the strip segment hidden rather than showing a dash.
+function pickFableBucket(weeklyByFamily) {
+  if (!weeklyByFamily) return null;
+  for (const key of Object.keys(weeklyByFamily)) {
+    if (key.includes("fable")) return { ...weeklyByFamily[key], family: key };
+  }
+  return null;
+}
+
+// v1.2.9: claude.ai reports quotas in TWO places, and only one of them carries
+// per-model limits.
+//
+//   • Legacy top-level buckets — five_hour, seven_day, seven_day_opus,
+//     seven_day_sonnet, seven_day_cowork, … Every per-model key observed in real
+//     responses was `null`, and crucially there is NO seven_day_fable: new models
+//     do not get a top-level key. Some keys are codenames for unshipped features
+//     (amber_ladder, cinder_cove, nimbus_quill, tangelo, omelette…), so guessing
+//     a field name for the next model was never going to work.
+//
+//   • `limits[]` — one self-describing entry per quota:
+//         { group, kind, percent, resets_at, scope, is_active, severity }
+//     `kind: "session"` is the 5-hour window, `kind: "weekly_all"` is the
+//     account-wide weekly, and `kind: "weekly_scoped"` carries a per-model quota
+//     identified by `scope.model.display_name` ("Fable"). This is the ONLY place
+//     Fable usage appears, and because the model names itself, it will pick up
+//     whatever ships next with no code change.
+//
+// So limits[] is now the preferred source for weekly buckets. `is_active` and
+// `severity` are deliberately ignored: an inactive weekly quota still holds a
+// real percentage worth showing (weekly_all was is_active:false at 3%), and we
+// apply our own colour thresholds.
+function normalizeFamilyName(name) {
+  return String(name || "").trim().toLowerCase().replace(/\s+/g, "_");
+}
+
+function parseLimitsArray(limits) {
+  const out = { session: null, weeklyByFamily: {} };
+  if (!Array.isArray(limits)) return out;
+  for (const entry of limits) {
+    if (!entry || typeof entry !== "object") continue;
+    const pct = pickPct(entry);              // reads `percent` (already 0..100)
+    if (pct == null) continue;               // 0 is valid and must survive this
+    const resetsAt = pickReset(entry);       // reads `resets_at`
+    const kind = String(entry.kind || "");
+    const group = String(entry.group || "");
+
+    if (kind === "session" || (group === "session" && !kind)) {
+      out.session = { percent: pct, resetsAt };
+      continue;
+    }
+    if (kind === "weekly_all") {
+      out.weeklyByFamily.generic = { percent: pct, resetsAt, apiField: "limits[weekly_all]" };
+      continue;
+    }
+    if (kind === "weekly_scoped" || group === "weekly") {
+      const model = (entry.scope && entry.scope.model) || null;
+      const display = model && model.display_name;
+      const fam = normalizeFamilyName(display);
+      if (!fam) {
+        // Scoped but unlabelled — keep it as the generic weekly rather than
+        // silently dropping a real quota, but never overwrite a labelled one.
+        if (!out.weeklyByFamily.generic) {
+          out.weeklyByFamily.generic = { percent: pct, resetsAt, apiField: "limits[weekly_scoped]" };
+        }
+        continue;
+      }
+      out.weeklyByFamily[fam] = {
+        percent: pct,
+        resetsAt,
+        apiField: `limits[weekly_scoped:${fam}]`,
+        displayName: display
+      };
+    }
+  }
+  return out;
+}
+
+function pickWeeklyForActiveFamily(weeklyByFamily, currentModel, excludeFamily) {
   if (!weeklyByFamily) return null;
   const family = ((currentModel && currentModel.family) || "generic").toLowerCase();
+  // v1.2.6: a family rendered by its own segment (Fable) must not also win the
+  // generic Weekly slot, or the strip shows one number under two labels.
+  const skip = (key) => excludeFamily != null && key === excludeFamily;
   const preferred = weeklyByFamily[family];
-  if (preferred) return { ...preferred, family };
+  if (preferred && !skip(family)) return { ...preferred, family };
   // v1.1.0: fuzzy match — the API suffix shape for new models isn't
   // guaranteed to equal the picker name (e.g. detected "fable" vs a field
   // like `seven_day_fable_5`). Match any bucket whose key contains the
   // detected family (or vice-versa) before falling back to generic.
   if (family !== "generic") {
     for (const key of Object.keys(weeklyByFamily)) {
-      if (key === "generic" || key === "other") continue;
+      if (key === "generic" || key === "other" || skip(key)) continue;
       if (key.includes(family) || family.includes(key)) {
         return { ...weeklyByFamily[key], family: key };
       }
@@ -447,14 +520,25 @@ function pickWeeklyForActiveFamily(weeklyByFamily, currentModel) {
   }
   const generic = weeklyByFamily.generic;
   if (generic) return { ...generic, family: "generic" };
-  const anyKey = Object.keys(weeklyByFamily)[0];
+  // Last resort: prefer a non-excluded bucket, but rather than leave Weekly
+  // blank take the excluded one if it's all there is. content-script.js then
+  // suppresses the Fable segment (it matches on apiField) so nothing doubles up.
+  const keys = Object.keys(weeklyByFamily);
+  const anyKey = keys.find((k) => !skip(k)) || keys[0];
   return anyKey ? { ...weeklyByFamily[anyKey], family: anyKey } : null;
 }
 
 async function applyCurrentModel(modelInfo) {
   await setCurrentModel(modelInfo);
   const usage = await getUsage();
-  usage.weekly = pickWeeklyForActiveFamily(usage.weeklyByFamily || {}, modelInfo);
+  // v1.2.6: mirror applyUsage() — switching models must not pull the Fable
+  // bucket into the Weekly slot while Fable owns its own segment.
+  usage.fable = pickFableBucket(usage.weeklyByFamily || {});
+  usage.weekly = pickWeeklyForActiveFamily(
+    usage.weeklyByFamily || {},
+    modelInfo,
+    usage.fable ? usage.fable.family : null
+  );
   await saveUsage(usage);
   await broadcastUsage(usage);
 }
@@ -603,6 +687,29 @@ async function rescheduleAlarm() {
     periodInMinutes: Math.max(1, pollMinutes || DEFAULT_POLL_MINUTES)
   });
 }
+// v1.2.14: react to account / org switches the moment they happen. Two cookies
+// signal a switch: `lastActiveOrg` flips when the user changes org inside one
+// login, and `sessionKey` flips on logout/login (a different account entirely).
+// Without this, the strip kept showing the previous account's numbers for up to
+// a full poll interval — and cookies.onChanged also wakes the MV3 service
+// worker, so the refresh happens even if it was suspended. Debounced because a
+// login rewrites several cookies in a burst; one poll at the end covers all of
+// it, and applyUsage's org stamp does the actual state reset.
+if (chrome.cookies && chrome.cookies.onChanged) {
+  let cookieSwitchTimer = null;
+  chrome.cookies.onChanged.addListener(({ cookie }) => {
+    if (!cookie) return;
+    const domain = String(cookie.domain || "").replace(/^\./, "");
+    if (!domain.endsWith("claude.ai")) return;
+    if (cookie.name !== "lastActiveOrg" && cookie.name !== "sessionKey") return;
+    if (cookieSwitchTimer) clearTimeout(cookieSwitchTimer);
+    cookieSwitchTimer = setTimeout(() => {
+      cookieSwitchTimer = null;
+      pollUsage();
+    }, 500);
+  });
+}
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === POLL_ALARM) pollUsage();
 });
@@ -672,7 +779,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   if (msg.type === "save-settings") {
     (async () => {
-      await chrome.storage.local.set({ [STORAGE_KEYS.settings]: msg.settings });
+      // v1.2.7: MERGE rather than overwrite. Previously this replaced the whole
+      // settings object, which was fine while the options page was the only
+      // writer (it always sent every key). The popup now saves just
+      // `stripFields`, and a blind overwrite would wipe the user's thresholds
+      // and poll interval. Merging keeps each editor to its own keys.
+      const current = await getSettings();
+      const next = { ...current, ...(msg.settings || {}) };
+      if (msg.settings && msg.settings.stripFields) {
+        next.stripFields = normalizeStripFields({
+          ...current.stripFields,
+          ...msg.settings.stripFields
+        });
+      }
+      await chrome.storage.local.set({ [STORAGE_KEYS.settings]: next });
       await rescheduleAlarm();
       // Reset fired markers so newly-added thresholds at OR below current %
       // fire immediately on the re-check below.
